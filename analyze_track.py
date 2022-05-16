@@ -11,18 +11,20 @@ _LOGGER = logging.getLogger(__name__)
 
 def main():
     args = _parse_arguments()
-    analyzer = TrackAnalyzer(args.file)
+    analyzer = TrackAnalyzer(args.input_file)
     analyzer.analyze()
     analyzer.get_maximal_values()
     _LOGGER.info(f"slope 100m {analyzer.slope_100}")
     _LOGGER.info(f"vertical_velocities 60s {analyzer.vertical_velocities_60s}")
     _LOGGER.info(f"vertical_velocities 600s {analyzer.vertical_velocities_600s}")
     _LOGGER.info(f"vertical_velocities 3600s {analyzer.vertical_velocities_3600s}")
+    analyzer.update_file(args.output_file)
 
 
 def _parse_arguments():
     parser = argparse.ArgumentParser(description="Analyze given track.")
-    parser.add_argument("--file", help="File to analyze", default="/home/prinzt/Downloads/2021-06-13_Um_den_Hohen_Göll.gpx")
+    parser.add_argument("--input_file", help="File to analyze", default="/home/prinzt/Downloads/2021-06-13_Um_den_Hohen_Göll.gpx")
+    parser.add_argument("--output_file", help="File to analyze", default="/tmp/output.gpx")
 
     return parser.parse_args()
 
