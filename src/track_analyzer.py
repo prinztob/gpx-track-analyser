@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import math
 
@@ -15,8 +16,9 @@ class TrackAnalyzer(object):
     NAMESPACE_NAME = 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1'
     NAMESPACE = '{' + NAMESPACE_NAME + '}'
     TRACK_EXTENSIONS = 'TrackPointExtension'
+    SUFFIX = "_simplified"
 
-    def __init__(self, file):
+    def __init__(self, file, update_track_with_calculated_values = False):
         self.file = file
         self.all_points = []
         self.gpx = None
@@ -27,11 +29,21 @@ class TrackAnalyzer(object):
         self.vertical_velocities_600s = 0
         self.vertical_velocities_3600s = 0
         self.duration = 0
+        self.update_track_with_calculated_values = update_track_with_calculated_values
 
-    def update_file(self, file=None):
+    def write_file(self, file=None):
         if not file:
             file = self.file
-        with open(file, "w") as f:
+        if self.update_track_with_calculated_values:
+            with open(file, "w") as f:
+                f.write(self.gpx.to_xml())
+        gpx_file_simplified = prefix_filename(file)
+        gpx_file_gpxpy = file.replace(".gpx", "_gpxpy.json")
+        self.set_gpx_data()
+        with open(gpx_file_gpxpy, 'w') as fp:
+            json.dump(self.data, fp, indent=4)
+        self.gpx.simplify()
+        with open(gpx_file_simplified, 'w') as f:
             f.write(self.gpx.to_xml())
 
     def analyze(self):
@@ -46,9 +58,9 @@ class TrackAnalyzer(object):
 
     def get_maximal_values(self):
         self.slope_100 = max(self.slopes)
-        self.vertical_velocities_60s = max(self.vertical_velocities["60"])
-        self.vertical_velocities_600s = max(self.vertical_velocities["600"])
-        self.vertical_velocities_3600s = max(self.vertical_velocities["3600"])
+        self.vertical_velocities_60s = max(self.vertical_velocities["60"]) if len(self.vertical_velocities["60"]) > 0 else 0
+        self.vertical_velocities_600s = max(self.vertical_velocities["600"]) if len(self.vertical_velocities["600"]) > 0 else 0
+        self.vertical_velocities_3600s = max(self.vertical_velocities["3600"]) if len(self.vertical_velocities["3600"]) > 0 else 0
 
     def set_all_points_with_distance(self):
         _LOGGER.info(f"Read and add distance to track file {self.file}")
@@ -91,12 +103,12 @@ class TrackAnalyzer(object):
                     y_array = [entry.elevation for entry in track_points_for_interval]
                     if len(set(y_array)) > 1:
                         linear_regression = estimate_coefficients(x_array, y_array)
-                        slope = linear_regression[1] if linear_regression[2] > 0.9 else 0.0
+                        slope = linear_regression[1] * 100 if linear_regression[2] > 0.9 else 0.0
                     else:
                         slope = 0
                 else:
                     elevation = track_points_for_interval[-1].elevation - track_points_for_interval[0].elevation
-                    slope = 0.0 if sum_meters == 0.0 else (elevation / sum_meters)
+                    slope = 0.0 if sum_meters == 0.0 else (elevation / sum_meters) * 100
                 self.slopes.append(slope)
                 track_points_for_interval = track_points_for_interval[1: -1]
                 middle_entry = track_points_for_interval[0]
@@ -117,7 +129,8 @@ class TrackAnalyzer(object):
         track_points_for_interval = []
         middle_entry = None
         while i < len(self.all_points) - 1:
-            if middle_entry and diff_times >= max_time_interval and len(track_points_for_interval) > 2:
+            vertical_velocity = 0
+            if middle_entry is not None and diff_times >= max_time_interval and len(track_points_for_interval) > 2:
                 reduced_track_points_for_interval = reduce_track_to_relevant_elevation_points(track_points_for_interval)
                 relevant_track_points_for_interval, gain, loss = remove_elevation_differences_smaller_as(
                     reduced_track_points_for_interval, 10)
@@ -127,16 +140,12 @@ class TrackAnalyzer(object):
                     if len(set(y_array)) > 1:
                         linear_regression = estimate_coefficients(x_array, y_array)
                         vertical_velocity = linear_regression[1] if linear_regression[2] > 0.9 else 0.0
-                    else:
-                        vertical_velocity = 0
                 else:
                     vertical_velocity = 0.0 if diff_times == 0.0 else (gain / diff_times)
 
                 self.vertical_velocities[str(max_time_interval)].append(vertical_velocity)
                 track_points_for_interval = track_points_for_interval[1: -1]
-                middle_entry = track_points_for_interval[0]
-            else:
-                vertical_velocity = 0
+                middle_entry = None
             if update_points:
                 self.set_tag_in_extensions(vertical_velocity * max_time_interval, self.all_points[i], "vvelocity")
             if not self.all_points[i].time is None and self.all_points[i].elevation:
@@ -145,6 +154,27 @@ class TrackAnalyzer(object):
                 if diff_times > max_time_interval / 2 and not middle_entry:
                     middle_entry = self.all_points[i]
             i += 1
+
+    def set_gpx_data(self):
+        extremes = self.gpx.get_elevation_extremes()
+        self.gpx.smooth()
+        moving_data = self.gpx.get_moving_data()
+        uphill_downhill = self.gpx.get_uphill_downhill()
+        self.data = {
+            "duration": self.gpx.get_duration(),
+            "min_elevation": round(extremes.minimum, 1),
+            "max_elevation": round(extremes.maximum, 1),
+            "number_points": self.gpx.get_points_no(),
+            "elevation_gain": round(uphill_downhill.uphill, 1),
+            "elevation_loss": round(uphill_downhill.downhill, 1),
+            "moving_time": moving_data.moving_time,
+            "moving_distance": round(moving_data.moving_distance, 2),
+            "max_speed": round(moving_data.max_speed, 2),
+            "slope_100": round(self.slope_100, 3),
+            "vertical_velocities_60s": round(self.vertical_velocities_60s, 3),
+            "vertical_velocities_600s": round(self.vertical_velocities_600s, 3),
+            "vertical_velocities_3600s": round(self.vertical_velocities_3600s, 3)
+        }
 
 
 def reduce_track_to_relevant_elevation_points(points):
@@ -214,5 +244,6 @@ def estimate_coefficients(x_array, y_array):
         r = 0
     return (b_0, b_1, r)
 
-# with open("/tmp/output.gpx", "w") as f:
-#    f.write(gpx.to_xml())
+
+def prefix_filename(fn: str) -> str:
+    return fn.replace(".gpx", TrackAnalyzer.SUFFIX + ".gpx")
