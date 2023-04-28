@@ -18,8 +18,9 @@ class TrackAnalyzer(object):
     TRACK_EXTENSIONS = 'TrackPointExtension'
     SUFFIX = "_simplified"
 
-    def __init__(self, file, update_track_with_calculated_values = False):
+    def __init__(self, file, update_track_with_calculated_values=False):
         self.file = file
+        self.data = {}
         self.all_points = []
         self.gpx = None
         self.slopes = []
@@ -60,7 +61,8 @@ class TrackAnalyzer(object):
         self.slope_100 = max(self.slopes)
         self.vertical_velocities_60s = max(self.vertical_velocities["60"]) if len(self.vertical_velocities["60"]) > 0 else 0
         self.vertical_velocities_600s = max(self.vertical_velocities["600"]) if len(self.vertical_velocities["600"]) > 0 else 0
-        self.vertical_velocities_3600s = max(self.vertical_velocities["3600"]) if len(self.vertical_velocities["3600"]) > 0 else 0
+        self.vertical_velocities_3600s = max(self.vertical_velocities["3600"]) if len(
+            self.vertical_velocities["3600"]) > 0 else 0
 
     def set_all_points_with_distance(self):
         _LOGGER.info(f"Read and add distance to track file {self.file}")
@@ -70,14 +72,18 @@ class TrackAnalyzer(object):
         for track in self.gpx.tracks:
             for segment in track.segments:
                 last_point = None
+                points = []
                 for point in segment.points:
-                    if last_point:
-                        distance += geopy.distance.distance((last_point.latitude, last_point.longitude),
-                                                            (point.latitude, point.longitude)).km
-                    self.set_tag_in_extensions(distance * 1000, point, "distance")
-                    point.distance = distance * 1000
-                    last_point = point
-                    self.all_points.append(point)
+                    if point.latitude != 0 and point.longitude != 0:
+                        if last_point:
+                            distance += geopy.distance.distance((last_point.latitude, last_point.longitude),
+                                                                (point.latitude, point.longitude)).km
+                        self.set_tag_in_extensions(distance * 1000, point, "distance")
+                        point.distance = distance * 1000
+                        last_point = point
+                        self.all_points.append(point)
+                        points.append(point)
+                segment.points = points
 
     def set_tag_in_extensions(self, value, point, tag_name):
         tag = f"{self.NAMESPACE}{self.TRACK_EXTENSIONS}"
@@ -115,7 +121,8 @@ class TrackAnalyzer(object):
             else:
                 slope = 0
             self.set_tag_in_extensions(slope * 100, self.all_points[i], "slope")
-            if not self.all_points[i].distance is None and self.all_points[i].distance >= 0.0 and self.all_points[i].elevation:
+            if not self.all_points[i].distance is None and self.all_points[i].distance >= 0.0 and self.all_points[
+                i].elevation:
                 track_points_for_interval.append(self.all_points[i])
                 sum_meters = track_points_for_interval[-1].distance - track_points_for_interval[0].distance
                 if sum_meters > max_meter_interval / 2 and not middle_entry:
@@ -134,16 +141,18 @@ class TrackAnalyzer(object):
                 reduced_track_points_for_interval = reduce_track_to_relevant_elevation_points(track_points_for_interval)
                 relevant_track_points_for_interval, gain, loss = remove_elevation_differences_smaller_as(
                     reduced_track_points_for_interval, 10)
-                if use_regression:
-                    x_array = [(entry.time - self.all_points[0].time).total_seconds() for entry in track_points_for_interval]
-                    y_array = [entry.elevation for entry in track_points_for_interval]
-                    if len(set(y_array)) > 1:
-                        linear_regression = estimate_coefficients(x_array, y_array)
-                        vertical_velocity = linear_regression[1] if linear_regression[2] > 0.9 else 0.0
-                else:
-                    vertical_velocity = 0.0 if diff_times == 0.0 else (gain / diff_times)
+                if len(relevant_track_points_for_interval) > 1:
+                    if use_regression:
+                        x_array = [(entry.time - self.all_points[0].time).total_seconds() for entry in
+                                   track_points_for_interval]
+                        y_array = [entry.elevation for entry in track_points_for_interval]
+                        if len(set(y_array)) > 1:
+                            linear_regression = estimate_coefficients(x_array, y_array)
+                            vertical_velocity = linear_regression[1] if linear_regression[2] > 0.9 else 0.0
+                    else:
+                        vertical_velocity = 0.0 if diff_times == 0.0 else (gain / diff_times)
 
-                self.vertical_velocities[str(max_time_interval)].append(vertical_velocity)
+                    self.vertical_velocities[str(max_time_interval)].append(vertical_velocity)
                 track_points_for_interval = track_points_for_interval[1: -1]
                 middle_entry = None
             if update_points:
@@ -194,11 +203,13 @@ def reduce_track_to_relevant_elevation_points(points):
     for point in points_with_doubles:
         current_elevation = round(point.elevation)
         last_elevation = round(points_with_doubles[j - 1].elevation) if (j != 0) else current_elevation
-        next_elevation = round(points_with_doubles[j + 1].elevation) if (j != len(points_with_doubles) - 1) else current_elevation
+        next_elevation = round(points_with_doubles[j + 1].elevation) if (
+                    j != len(points_with_doubles) - 1) else current_elevation
         if j == 0 or j == len(points_with_doubles) - 1:
             reduced_points.append(point)
         elif current_elevation != last_elevation and current_elevation != next_elevation:
-            if math.copysign(1, current_elevation - last_elevation) != math.copysign(1, next_elevation - current_elevation):
+            if math.copysign(1, current_elevation - last_elevation) != math.copysign(1,
+                                                                                     next_elevation - current_elevation):
                 reduced_points.append(point)
         j += 1
     return reduced_points
@@ -214,7 +225,17 @@ def remove_elevation_differences_smaller_as(points, minimal_delta):
             filtered_points.append(point)
         else:
             delta = point.elevation - filtered_points[-1].elevation
+            delta_to_second_last = point.elevation - filtered_points[-2].elevation if len(filtered_points) > 1 else 0
+            delta_from_last = filtered_points[-1].elevation - filtered_points[-2].elevation if len(
+                filtered_points) > 1 else 0
             if abs(delta) >= minimal_delta:
+                filtered_points.append(point)
+                if delta > 0:
+                    elevation_gain += delta
+                else:
+                    elevation_loss += delta
+            elif abs(delta_to_second_last) > abs(delta_from_last):
+                filtered_points.pop(-1)
                 filtered_points.append(point)
                 if delta > 0:
                     elevation_gain += delta
@@ -226,23 +247,23 @@ def remove_elevation_differences_smaller_as(points, minimal_delta):
 
 def estimate_coefficients(x_array, y_array):
     n = len(x_array)
-    S_x = sum(x_array)
-    S_y = sum(y_array)
+    s_x = sum(x_array)
+    s_y = sum(y_array)
 
     # calculating cross-deviation and deviation about x
-    SS_xy = sum([x_array[i] * y_array[i] for i in range(0, n)])
-    SS_xx = sum([x_array[i] * x_array[i] for i in range(0, n)])
-    SS_yy = sum([y_array[i] * y_array[i] for i in range(0, n)])
+    ss_xy = sum([x_array[i] * y_array[i] for i in range(0, n)])
+    ss_xx = sum([x_array[i] * x_array[i] for i in range(0, n)])
+    ss_yy = sum([y_array[i] * y_array[i] for i in range(0, n)])
 
     # calculating regression coefficients
-    b_1 = (n * SS_xy - S_x * S_y) / (n * SS_xx - S_x * S_x)
-    b_0 = S_y / n - b_1 * S_x / n
-    divisor = math.sqrt((n * SS_xx - S_x * S_x) * (n * SS_yy - S_y * S_y))
+    b_1 = (n * ss_xy - s_x * s_y) / (n * ss_xx - s_x * s_x)
+    b_0 = s_y / n - b_1 * s_x / n
+    divisor = math.sqrt((n * ss_xx - s_x * s_x) * (n * ss_yy - s_y * s_y))
     if divisor > 0:
-        r = (n * SS_xy - S_x * S_y) / divisor
+        r = (n * ss_xy - s_x * s_y) / divisor
     else:
         r = 0
-    return (b_0, b_1, r)
+    return b_0, b_1, r
 
 
 def prefix_filename(fn: str) -> str:

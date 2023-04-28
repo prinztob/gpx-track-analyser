@@ -2,7 +2,7 @@ import argparse
 import logging
 import sys
 
-from src.track_analyzer import TrackAnalyzer
+from src.gpx_track_analyzer import TrackAnalyzer
 
 logging.basicConfig(format="%(asctime)s %(levelname)8s %(pathname)s: %(message)s", level=logging.INFO,
                     datefmt="%y-%m-%dT%H:%M:%S")
