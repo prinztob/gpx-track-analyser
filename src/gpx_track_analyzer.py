@@ -64,10 +64,14 @@ class TrackAnalyzer(object):
         self.vertical_velocities_3600s = max(self.vertical_velocities["3600"]) if len(
             self.vertical_velocities["3600"]) > 0 else 0
 
-    def set_all_points_with_distance(self):
-        _LOGGER.info(f"Read and add distance to track file {self.file}")
+    def parse_track(self):
         gpx_file = open(self.file, 'r')
         self.gpx = gpxpy.parse(gpx_file)
+
+    def set_all_points_with_distance(self):
+        _LOGGER.info(f"Read and add distance to track file {self.file}")
+        if self.gpx is None:
+            self.parse_track()
         distance = 0.0
         for track in self.gpx.tracks:
             for segment in track.segments:

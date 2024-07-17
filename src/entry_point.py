@@ -1,12 +1,14 @@
 import json
 import os
 from datetime import date
+
 from garminconnect import (
     Garmin,
     GarminConnectConnectionError,
     GarminConnectTooManyRequestsError,
     GarminConnectAuthenticationError,
 )
+
 from gpx_track_analyzer import TrackAnalyzer
 
 BASE_URL = 'https://connect.garmin.com'
@@ -285,10 +287,45 @@ def get_battery_charged_in_percent(solar):
 
                 solar_exposition = [intensity["solarUtilization"] for intensity in solar_reading_for_date if
                                     intensity["solarUtilization"] > 5]
-                start_date = datetime.strptime(solar_reading_for_date[0]["readingTimestampLocal"], '%Y-%m-%dT%H:%M:%S.%f')
-                end_date = datetime.strptime(solar_reading_for_date[-1]["readingTimestampLocal"], '%Y-%m-%dT%H:%M:%S.%f')
+                start_date = datetime.strptime(solar_reading_for_date[0]["readingTimestampLocal"],
+                                               '%Y-%m-%dT%H:%M:%S.%f')
+                end_date = datetime.strptime(solar_reading_for_date[-1]["readingTimestampLocal"],
+                                             '%Y-%m-%dT%H:%M:%S.%f')
                 seconds = (end_date - start_date).seconds
-                multiplicand = 0.2 /  (60 * 100)  # 0.2 % per 60 minutes 100% solar intensity (Fenix 6)
+                multiplicand = 0.2 / (60 * 100)  # 0.2 % per 60 minutes 100% solar intensity (Fenix 6)
                 return sum(solar_utilization) * multiplicand, \
                        len(solar_exposition) / 60, \
                        86400 - seconds < 999
+
+
+def merge_tracks(gpx_track_files_to_merge, output_file, name):
+    try:
+        gpx_track_files_to_merge = list(gpx_track_files_to_merge)
+        analyzer_for_all_tracks = None
+        for file in gpx_track_files_to_merge:
+            analyzer_for_single_track = TrackAnalyzer(file, True)
+            analyzer_for_single_track.parse_track()
+            if analyzer_for_all_tracks is None:
+                analyzer_for_all_tracks = analyzer_for_single_track
+            else:
+                time1 = get_time(analyzer_for_all_tracks.gpx)
+                time2 = get_time(analyzer_for_single_track.gpx)
+                if  time1 is None or time2 is None or time1 < time2:
+                    analyzer_for_all_tracks.gpx.tracks.extend(analyzer_for_single_track.gpx.tracks)
+                else:
+                    analyzer_for_single_track.gpx.tracks.extend(analyzer_for_all_tracks.gpx.tracks)
+                    analyzer_for_all_tracks = analyzer_for_single_track
+        analyzer_for_all_tracks.gpx.name = name
+        analyzer_for_all_tracks.set_all_points_with_distance()
+        with open(output_file, "w") as f:
+            f.write(analyzer_for_all_tracks.gpx.to_xml())
+        print(f"Wrote file {output_file}")
+    except Exception as err:
+        print( "return code: 1Unknown error occurred during Garmin Connect Client get device id %s" % err)
+
+
+def get_time(gpx):
+    if gpx.time:
+        return gpx.time
+    if gpx and len(gpx.tracks) > 0 and len(gpx.tracks[0].segments) > 0 and len(gpx.tracks[0].segments[0].points) > 0:
+        return gpx.tracks[0].segments[0].points[0].time
