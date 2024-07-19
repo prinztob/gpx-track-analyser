@@ -9,23 +9,36 @@ from garminconnect import (
     GarminConnectAuthenticationError,
 )
 
-from gpx_track_analyzer import TrackAnalyzer
+from .gpx_track_analyzer import TrackAnalyzer
+from src.tcx_to_gpx import convert_tcx_to_gpx
 
 BASE_URL = 'https://connect.garmin.com'
 
 
-def get_authenticated_client(user_name, password):
+def init_api(user_name, password, output_file):
+    """Initialize Garmin API with your credentials."""
+    token_store = output_file + "/.garminconnect"
     try:
-        print(f"Garmin login with {user_name}")
-        api = Garmin(user_name, password)
-        api.login()
-        return api
-    except (
-            GarminConnectConnectionError,
-            GarminConnectAuthenticationError,
-            GarminConnectTooManyRequestsError,
-    ) as err:
-        return "return code: 1Error occurred during Garmin Connect Client init: %s" % err
+        print(
+            f"Trying to login to Garmin Connect using token data from '{token_store}'...\n"
+        )
+        garmin = Garmin()
+        garmin.login(token_store)
+        return garmin
+    except (FileNotFoundError, GarthHTTPError, GarminConnectAuthenticationError):
+        # Session is expired. You'll need to log in again
+        print(
+            "Login tokens not present, login with your Garmin Connect credentials to generate them.\n"
+            f"They will be stored in '{token_store}' for future use.\n"
+        )
+        try:
+            garmin = Garmin(user_name, password)
+            garmin.login()
+            garmin.garth.dump(token_store)
+            return garmin
+        except (FileNotFoundError, GarthHTTPError, GarminConnectAuthenticationError, requests.exceptions.HTTPError) \
+                as err:
+            return "return code: 1Error occurred during Garmin Connect Client init: %s" % err
     except Exception as err:
         return "return code: 1Unknown error occurred during Garmin Connect Client init %s" % err
 
@@ -76,11 +89,12 @@ def get_activity_json_for_date(client, date):
         return f"return code: 1Unknown error occurred during Garmin Connect Client get activity json for date {date}: {err}"
 
 
-def download_tcx(api, activity_id, output_file):
+def download_tcx(api, activity_id, output_file_tcx, output_file_gpx):
     try:
         gpx_data = api.download_activity(activity_id, dl_fmt=Garmin.ActivityDownloadFormat.TCX)
-        with open(output_file, "wb") as fb:
+        with open(output_file_tcx, "wb") as fb:
             fb.write(gpx_data)
+        convert_tcx_to_gpx(output_file_tcx, output_file_gpx)
         return "return code: 0"
     except (
             GarminConnectConnectionError,
@@ -89,7 +103,8 @@ def download_tcx(api, activity_id, output_file):
     ) as err:
         return f"return code: 1Error occurred during Garmin Connect Client download tcx for id {activity_id}: {err}"
     except Exception as err:
-        return f"return code: 1Unknown error occurred during Garmin Connect Client download tcx for id {activity_id}: {err}"
+        return (f"return code: 1Unknown error occurred during Garmin Connect Client download tcx for id {activity_id}: "
+                f"{err}")
 
 
 def download_gpx(api, activity_id, output_file):

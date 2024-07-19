@@ -6,6 +6,7 @@ import math
 import geopy.distance
 import gpxpy.gpx
 import lxml.etree as mod_etree
+from pandas import DataFrame
 
 logging.basicConfig(format="%(asctime)s %(levelname)8s %(pathname)s: %(message)s", level=logging.INFO,
                     datefmt="%y-%m-%dT%H:%M:%S")
@@ -24,6 +25,8 @@ class TrackAnalyzer(object):
         self.all_points = []
         self.gpx = None
         self.slopes = []
+        self.time_entries = []
+        self.power_entries = []
         self.vertical_velocities = {}
         self.slope_100 = 0
         self.vertical_velocities_60s = 0
@@ -59,8 +62,10 @@ class TrackAnalyzer(object):
 
     def get_maximal_values(self):
         self.slope_100 = max(self.slopes)
-        self.vertical_velocities_60s = max(self.vertical_velocities["60"]) if len(self.vertical_velocities["60"]) > 0 else 0
-        self.vertical_velocities_600s = max(self.vertical_velocities["600"]) if len(self.vertical_velocities["600"]) > 0 else 0
+        self.vertical_velocities_60s = max(self.vertical_velocities["60"]) if len(
+            self.vertical_velocities["60"]) > 0 else 0
+        self.vertical_velocities_600s = max(self.vertical_velocities["600"]) if len(
+            self.vertical_velocities["600"]) > 0 else 0
         self.vertical_velocities_3600s = max(self.vertical_velocities["3600"]) if len(
             self.vertical_velocities["3600"]) > 0 else 0
 
@@ -73,9 +78,10 @@ class TrackAnalyzer(object):
         if self.gpx is None:
             self.parse_track()
         distance = 0.0
+        last_point = None
+        last_time = None
         for track in self.gpx.tracks:
             for segment in track.segments:
-                last_point = None
                 points = []
                 for point in segment.points:
                     if point.latitude != 0 and point.longitude != 0:
@@ -84,9 +90,18 @@ class TrackAnalyzer(object):
                                                                 (point.latitude, point.longitude)).km
                         self.set_tag_in_extensions(distance * 1000, point, "distance")
                         point.distance = distance * 1000
-                        last_point = point
                         self.all_points.append(point)
                         points.append(point)
+                        all_power_entries = [el.text for el in point.extensions[0] if 'power' in el.tag]
+                        if len(all_power_entries) > 0:
+                            if last_time is not None and abs((point.time - last_time).seconds) > 5:
+                                for seconds in range(1, abs((point.time - last_time).seconds)):
+                                    self.time_entries.append(last_time + datetime.timedelta(seconds=seconds))
+                                    self.power_entries.append(0)
+                            self.time_entries.append(point.time)
+                            self.power_entries.append(all_power_entries[0])
+                            last_time = point.time
+                        last_point = point
                 segment.points = points
 
     def set_tag_in_extensions(self, value, point, tag_name):
@@ -188,6 +203,33 @@ class TrackAnalyzer(object):
             "vertical_velocities_600s": round(self.vertical_velocities_600s, 3),
             "vertical_velocities_3600s": round(self.vertical_velocities_3600s, 3)
         }
+        self.set_power_data()
+
+    def set_power_data(self):
+        max_period = len(self.time_entries) - 1
+        power_per_time_entries = [
+            PowerPerTime(10, "10s", max_period),
+            PowerPerTime(30, "30s", max_period),
+            PowerPerTime(60, "1min", max_period),
+            PowerPerTime(300, "5min", max_period),
+            PowerPerTime(600, "10min", max_period),
+            PowerPerTime(1200, "20min", max_period),
+            PowerPerTime(1800, "30min", max_period),
+            PowerPerTime(3600, "1h", max_period),
+            PowerPerTime(7200, "2h", max_period),
+            PowerPerTime(18000, "5h", max_period)
+        ]
+        if len(self.power_entries) > 0 and len(self.power_entries) == len(self.time_entries):
+            duration = (self.time_entries[-1] - self.time_entries[0]).seconds
+            df = DataFrame({'power': self.power_entries})
+            df.index = self.time_entries
+
+            self.data["power_avg"] = int(max(df.rolling(f"{duration}s", min_periods=max_period).mean().dropna().values))
+            for entry in power_per_time_entries:
+                if duration > entry.time_interval:
+                    values = df.rolling(entry.window, min_periods=entry.min_period).mean().dropna().values
+                    if len(values) > 0:
+                        self.data[entry.json_key_interval] = int(max(values))
 
 
 def reduce_track_to_relevant_elevation_points(points):
@@ -208,7 +250,7 @@ def reduce_track_to_relevant_elevation_points(points):
         current_elevation = round(point.elevation)
         last_elevation = round(points_with_doubles[j - 1].elevation) if (j != 0) else current_elevation
         next_elevation = round(points_with_doubles[j + 1].elevation) if (
-                    j != len(points_with_doubles) - 1) else current_elevation
+                j != len(points_with_doubles) - 1) else current_elevation
         if j == 0 or j == len(points_with_doubles) - 1:
             reduced_points.append(point)
         elif current_elevation != last_elevation and current_elevation != next_elevation:
@@ -272,3 +314,11 @@ def estimate_coefficients(x_array, y_array):
 
 def prefix_filename(fn: str) -> str:
     return fn.replace(".gpx", TrackAnalyzer.SUFFIX + ".gpx")
+
+
+class PowerPerTime(object):
+    def __init__(self, time_interval: int, window: str, max_period: int):
+        self.time_interval = time_interval
+        self.json_key_interval = f"power_{window}"
+        self.window = window
+        self.min_period = max_period if max_period < time_interval else time_interval
