@@ -10,3 +10,4 @@ python-tcxparser==2.3.0
 tcxreader==0.4.10
 dateutils==0.6.12
 pandas~=2.2.2
+PyYAML~=5.4.1

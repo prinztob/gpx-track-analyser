@@ -1,17 +1,16 @@
 import datetime
 import json
-import logging
 import math
 import re
+from typing import List, Dict
 
 import geopy.distance
 import gpxpy.gpx
 import lxml.etree as mod_etree
+import yaml
 from pandas import DataFrame, to_datetime
 
-logging.basicConfig(format="%(asctime)s %(levelname)8s %(pathname)s: %(message)s", level=logging.INFO,
-                    datefmt="%y-%m-%dT%H:%M:%S")
-_LOGGER = logging.getLogger(__name__)
+from src.Extension import Extension
 
 
 class TrackAnalyzer(object):
@@ -20,11 +19,13 @@ class TrackAnalyzer(object):
     TRACK_EXTENSIONS = 'TrackPointExtension'
     SUFFIX = "_simplified"
 
-    def __init__(self, file, update_track_with_calculated_values=False):
+    def __init__(self, file, yaml_file=None, remove_extensions=False):
         self.file = file
-        search_result = re.search(r'<\?xml(.|\n)*?(\<\/gpx\>)', open(file, 'r').read())
-        if search_result:
-            self.gpx_file = search_result.group(0)
+        self.yaml_file = yaml_file if yaml_file else file.replace(".gpx", "_extensions.yaml")
+        with open(file, 'r') as f:
+            search_result = re.search(r'<\?xml(.|\n)*?(\<\/gpx\>)', f.read())
+            if search_result:
+                self.gpx_file = search_result.group(0)
         self.data = {}
         self.all_points = []
         self.points_with_time = []
@@ -40,12 +41,19 @@ class TrackAnalyzer(object):
         self.vertical_velocities_600s = 0
         self.vertical_velocities_3600s = 0
         self.duration = 0
-        self.update_track_with_calculated_values = update_track_with_calculated_values
+        self.remove_extensions = remove_extensions
 
-    def write_file(self, file=None):
+    def write_file(self, file=None, to_yaml=False):
         if not file:
             file = self.file
-        if self.update_track_with_calculated_values:
+        extensions = []
+        for track in self.gpx.tracks:
+            for segment in track.segments:
+                for point in segment.points:
+                    extensions.append(Extension.parse(point.extensions))
+                    if self.remove_extensions:
+                        point.extensions = None
+        if self.remove_extensions:
             with open(file, "w") as f:
                 f.write(self.gpx.to_xml())
         gpx_file_simplified = prefix_filename(file)
@@ -53,11 +61,18 @@ class TrackAnalyzer(object):
         self.set_gpx_data()
         with open(gpx_file_gpxpy, 'w') as fp:
             json.dump(self.data, fp, indent=4)
-        _LOGGER.info(f"Written data of track to {gpx_file_gpxpy}")
+        print(f"Written data of track to {gpx_file_gpxpy}")
         self.gpx.simplify()
+        if self.yaml_file:
+            self.write_extensions_to_yaml(extensions)
         with open(gpx_file_simplified, 'w') as f:
             f.write(self.gpx.to_xml())
-        _LOGGER.info(f"Written simplified track to {gpx_file_simplified}")
+        print(f"Written simplified track to {gpx_file_simplified}")
+
+    def write_extensions_to_yaml(self, extensions: List["Extension"]):
+        with open(self.yaml_file, 'w', encoding='utf-8') as file:
+            yaml.dump({"extensions": [e.to_dict() for e in extensions]}, file, default_flow_style=False)
+        print(f"Written extensions to {self.yaml_file}")
 
     def analyze(self):
         start_time = datetime.datetime.now()
@@ -67,7 +82,6 @@ class TrackAnalyzer(object):
         self.set_vertical_velocity(3600)
         self.set_slope(100)
         self.duration = (datetime.datetime.now() - start_time).total_seconds()
-        _LOGGER.info(f"Took {self.duration}")
 
     def get_maximal_values(self):
         self.slope_100 = max(self.slopes) if len(self.slopes) > 0 else 0
@@ -79,11 +93,15 @@ class TrackAnalyzer(object):
             self.vertical_velocities["3600"]) > 0 else 0
 
     def parse_track(self):
-        gpx_file = open(self.file, 'r')
-        self.gpx = gpxpy.parse(gpx_file)
+        with open(self.file, 'r') as f:
+            search_result = re.search(r'<\?xml(.|\n)*?(\<\/gpx\>)', f.read())
+            if search_result:
+                self.gpx = gpxpy.parse(search_result.group(0))
+            else:
+                self.gpx = gpxpy.parse(f)
 
     def set_all_points_with_distance(self):
-        _LOGGER.info(f"Read and add distance to track file {self.file}")
+        print(f"Read and add distance to track file {self.file}")
         if self.gpx_file:
             if self.gpx is None:
                 self.parse_track()
@@ -101,7 +119,7 @@ class TrackAnalyzer(object):
                             self.set_tag_in_extensions(distance * 1000, point, "distance")
                             point.distance = distance * 1000
                             self.distance_entries.append(int(point.distance))
-                            if last_point:
+                            if last_point and point.time and last_point.time:
                                 self.distance_entries_time.append((point.time - last_point.time).total_seconds())
                             else:
                                 self.distance_entries_time.append(0)
@@ -111,13 +129,16 @@ class TrackAnalyzer(object):
                                 self.points_with_time.append(point)
                             all_power_entries = [el.text for el in point.extensions[0] if 'power' in el.tag]
                             if len(all_power_entries) > 0:
-                                if last_time is not None and abs((point.time - last_time).seconds) > 5:
-                                    for seconds in range(1, abs((point.time - last_time).seconds)):
-                                        self.time_entries.append(last_time + datetime.timedelta(seconds=seconds))
-                                        self.power_entries.append(0)
-                                self.time_entries.append(point.time)
-                                self.power_entries.append(all_power_entries[0])
-                                last_time = point.time
+                                if last_time and point.time:
+                                    diff = abs((point.time - last_time).seconds)
+                                    if 5 < diff < 300:
+                                        for seconds in range(1, abs((point.time - last_time).seconds)):
+                                            self.time_entries.append(last_time + datetime.timedelta(seconds=seconds))
+                                            self.power_entries.append(0)
+                                    if diff < 300:
+                                        self.time_entries.append(point.time)
+                                        self.power_entries.append(all_power_entries[0])
+                                        last_time = point.time
                             last_point = point
                     segment.points = points
 
@@ -273,6 +294,7 @@ class TrackAnalyzer(object):
                     if len(times > 0):
                         self.data[entry.json_key_interval] = entry.window_in_km * 3600 / times.min()
 
+
 def reduce_track_to_relevant_elevation_points(points):
     reduced_points = []
     points_with_doubles = []
@@ -354,7 +376,10 @@ def estimate_coefficients(x_array, y_array):
 
 
 def prefix_filename(fn: str) -> str:
-    return fn.replace(".gpx", TrackAnalyzer.SUFFIX + ".gpx")
+    if fn.endswith(".yaml"):
+        return fn.replace(".yaml", TrackAnalyzer.SUFFIX + ".yaml")
+    else:
+        return fn.replace(".gpx", TrackAnalyzer.SUFFIX + ".gpx")
 
 
 class PowerPerTime(object):
@@ -363,6 +388,7 @@ class PowerPerTime(object):
         self.json_key_interval = f"power_{window}"
         self.window = window
         self.min_period = max_period if max_period < time_interval else time_interval
+
 
 class AverageVelocityPerDistance(object):
     def __init__(self, window_in_km: int):

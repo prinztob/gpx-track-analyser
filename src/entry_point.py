@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import date
+from datetime import date, datetime
 
 from garminconnect import (
     Garmin,
@@ -239,10 +239,12 @@ def update_power_data(activity, api, date):
 
 def analyze_gpx_track(path):
     try:
+        start_time = datetime.now()
         analyzer = TrackAnalyzer(path)
         analyzer.analyze()
         analyzer.get_maximal_values()
         analyzer.write_file()
+        print(f"Analyzing of {path} took {(datetime.now() - start_time).total_seconds()}")
         return "return code: 0"
     except Exception as err:  # pylint: disable=broad-except
         return "return code: 1Unknown error occurred %s" % err
