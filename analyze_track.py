@@ -13,12 +13,7 @@ def main():
     args = _parse_arguments()
     analyzer = TrackAnalyzer(args.input_file)
     analyzer.analyze()
-    analyzer.get_maximal_values()
-    _LOGGER.info(f"slope 100m {analyzer.slope_100}")
-    _LOGGER.info(f"vertical_velocities 60s {analyzer.vertical_velocities_60s}")
-    _LOGGER.info(f"vertical_velocities 600s {analyzer.vertical_velocities_600s}")
-    _LOGGER.info(f"vertical_velocities 3600s {analyzer.vertical_velocities_3600s}")
-    analyzer.write_file(args.output_file)
+    analyzer.write_data_and_extension_to_file(args.output_file)
 
 
 def _parse_arguments():
