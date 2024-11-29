@@ -67,9 +67,18 @@ class TrackAnalyzer(object):
         self.set_all_points_with_distance()
         self.calculate_data_with_gpxpy()
         points = [e for e in self.all_points if e.time]
-        self.data.update(ElevationTrackAnalyzer(points).analyze())
-        self.data.update(PowerTrackAnalyzer(points).analyze())
-        self.data.update(VelocityTrackAnalyzer(points).analyze())
+        try:
+            self.data.update(ElevationTrackAnalyzer(points).analyze())
+        except Exception as err:
+            print(f"ElevationTrackAnalyzer failed with {err}")
+        try:
+            self.data.update(PowerTrackAnalyzer(points).analyze())
+        except Exception as err:
+            print(f"PowerTrackAnalyzer failed with {err}")
+        try:
+            self.data.update(VelocityTrackAnalyzer(points).analyze())
+        except Exception as err:
+            print(f"VelocityTrackAnalyzer failed with {err}")
         self.duration = (datetime.datetime.now() - start_time).total_seconds()
 
     def calculate_data_with_gpxpy(self):
@@ -121,7 +130,7 @@ class TrackAnalyzer(object):
                                         (points[-1].latitude, points[-1].longitude),
                                         (point.latitude, point.longitude)
                                     ).km
-                                point.extensions_calculated.distance = round(distance * 1000 + delta, 1)
+                                point.extensions_calculated.distance = distance * 1000 + delta
                             elif delta > 0:
                                 point.extensions_calculated.distance += delta
                             self.all_points.append(point)

@@ -2,6 +2,7 @@ import json
 import os
 from datetime import date, datetime
 
+import garth
 import lxml.etree as mod_etree
 import requests
 from garminconnect import (
@@ -21,6 +22,7 @@ BASE_URL = 'https://connect.garmin.com'
 
 def init_api(user_name, password, output_file):
     """Initialize Garmin API with your credentials."""
+    garth.http.USER_AGENT = {"User-Agent": "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.81 Mobile Safari/537.36", }
     token_store = output_file + "/.garminconnect"
     try:
         print(
@@ -43,9 +45,9 @@ def init_api(user_name, password, output_file):
         except (FileNotFoundError, GarthHTTPError, GarminConnectAuthenticationError,
                 requests.exceptions.HTTPError) \
                 as err:
-            return "return code: 1Error occurred during Garmin Connect Client init: %s" % err
-    except Exception as err:
-        return "return code: 1Unknown error occurred during Garmin Connect Client init %s" % err
+            return f"return code: 1Error occurred during Garmin Connect Client init: {err}"
+        except Exception as err:
+            return f"return code: 1Unknown error occurred during Garmin Connect Client init {err}"
 
 
 def get_activities_by_date(api, start_date, end_date, activity_type):
