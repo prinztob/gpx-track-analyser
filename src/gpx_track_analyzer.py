@@ -22,13 +22,15 @@ class TrackAnalyzer(object):
     NAMESPACE = '{' + NAMESPACE_NAME + '}'
     TRACK_EXTENSIONS = 'TrackPointExtension'
 
-    def __init__(self, file, additional_data_folder=None):
+    def __init__(self, file, additional_data_folder=None, split_files: List[str] = None):
         self.file = file
         if not additional_data_folder:
             additional_data_folder = os.path.dirname(file)
-        self.yaml_file = os.path.join(additional_data_folder, os.path.basename(file.replace(".gpx", "_extensions.yaml")))
+        self.yaml_file = os.path.join(additional_data_folder,
+                                      os.path.basename(file.replace(".gpx", "_extensions.yaml")))
         self.gpx_file_simplified = os.path.join(additional_data_folder, prefix_filename(os.path.basename(file)))
-        self.gpx_file_gpxpy = os.path.join(additional_data_folder, os.path.basename(file).replace(".gpx", "_gpxpy.json"))
+        self.gpx_file_gpxpy = os.path.join(additional_data_folder,
+                                           os.path.basename(file).replace(".gpx", "_gpxpy.json"))
         with open(file, 'r') as f:
             search_result = re.search(r'<\?xml(.|\n)*?(\<\/gpx\>)', f.read())
             if search_result:
@@ -38,6 +40,7 @@ class TrackAnalyzer(object):
         self.gpx = None
         self.distance_entries = []
         self.duration = 0
+        self.split_files = split_files
 
     def write_simplified_track_to_file(self, gpx_file_simplified=None):
         if self.gpx_file:
@@ -61,7 +64,6 @@ class TrackAnalyzer(object):
             json.dump(self.data, fp, indent=4)
         print(f"Written data of track to {gpx_file_gpxpy}")
 
-
     def analyze(self):
         start_time = datetime.datetime.now()
         self.set_all_points_with_distance()
@@ -76,7 +78,7 @@ class TrackAnalyzer(object):
         except Exception as err:
             print(f"PowerTrackAnalyzer failed with {err}")
         try:
-            self.data.update(VelocityTrackAnalyzer(points).analyze())
+            self.data.update(VelocityTrackAnalyzer(points, self.split_files).analyze())
         except Exception as err:
             print(f"VelocityTrackAnalyzer failed with {err}")
         self.duration = (datetime.datetime.now() - start_time).total_seconds()
@@ -122,7 +124,8 @@ class TrackAnalyzer(object):
                             if (i == 0
                                     and len(self.all_points) > 0
                                     and point.extensions_calculated.distance == 0
-                                    and point.extensions_calculated.distance < self.all_points[-1].extensions_calculated.distance):
+                                    and point.extensions_calculated.distance < self.all_points[
+                                        -1].extensions_calculated.distance):
                                 delta = self.all_points[-1].extensions_calculated.distance
                             if point.extensions_calculated.distance == 0.0:
                                 if i != 0:

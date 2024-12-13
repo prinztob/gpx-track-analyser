@@ -17,12 +17,12 @@ from src.tcx_to_gpx import convert_tcx_to_gpx
 from .Extension import Extension
 from .gpx_track_analyzer import TrackAnalyzer
 
-BASE_URL = 'https://connect.garmin.com'
-
 
 def init_api(user_name, password, output_file):
     """Initialize Garmin API with your credentials."""
-    garth.http.USER_AGENT = {"User-Agent": "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.81 Mobile Safari/537.36", }
+    garth.http.USER_AGENT = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.81 Mobile Safari/537.36"
+    }
     token_store = output_file + "/.garminconnect"
     try:
         print(
@@ -298,11 +298,15 @@ def get_precise_vo2max(api, selected_date):
 
 
 def download_splits(api, activity_id, folder):
-    splits = api.get_activity_splits(activity_id)
     output_file = f"{folder}/activity_{str(activity_id)}_splits.json"
     if not os.path.exists(output_file):
+        print(f"Download splits for activity_id {activity_id}")
+        splits = api.get_activity_splits(activity_id)
         with open(output_file, "w+") as fb:
             json.dump(splits, fb)
+    else:
+        with open(output_file) as fb:
+            splits = json.load(fb)
     return splits
 
 
@@ -326,10 +330,10 @@ def update_power_data(activity, api, selected_date):
         activity['maxAvgPower_18000'] = power_data['entries'][14]['power']
 
 
-def analyze_gpx_track(gpx_path, additional_data_folder):
+def analyze_gpx_track(gpx_path, additional_data_folder, split_files):
     try:
         start_time = datetime.now()
-        analyzer = TrackAnalyzer(gpx_path, additional_data_folder)
+        analyzer = TrackAnalyzer(gpx_path, additional_data_folder, split_files)
         analyzer.analyze()
         analyzer.write_data_and_extension_to_file()
         analyzer.write_simplified_track_to_file()
