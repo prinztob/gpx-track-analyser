@@ -9,7 +9,7 @@ from src.utils import prefix_filename, reduce_track_to_relevant_elevation_points
     remove_elevation_differences_smaller_as
 
 def test_simplifying_track_gpx():
-    file = "resources/track.gpx"
+    file = "../resources/track.gpx"
     output_file = tempfile.NamedTemporaryFile(suffix=".gpx")
     gpx_file_simplified = prefix_filename(output_file.name)
     analyzer = TrackAnalyzer(file)
@@ -18,7 +18,7 @@ def test_simplifying_track_gpx():
     assert len(get_points(gpx)) == 106
 
 def test_analyzing_track_gpx():
-    file = "resources/track.gpx"
+    file = "../resources/track.gpx"
 
     analyzer = TrackAnalyzer(file)
     gpx = gpxpy.parse(open(file, 'r'))
@@ -60,7 +60,7 @@ def test_analyzing_track_gpx():
 
 
 def test_analyzing_track2_gpx():
-    file = "resources/track2.gpx"
+    file = "../resources/track2.gpx"
 
     analyzer = TrackAnalyzer(file)
     analyzer.analyze()
@@ -72,7 +72,7 @@ def test_analyzing_track2_gpx():
 
 
 def test_analyzing_track6_gpx():
-    file = "resources/track6.gpx"
+    file = "../resources/track6.gpx"
 
     analyzer = TrackAnalyzer(file)
     analyzer.analyze()
@@ -82,9 +82,21 @@ def test_analyzing_track6_gpx():
     assert abs(analyzer.data["vertical_velocity_3600s_+"] - 0.186) < 0.01
     assert analyzer.duration < 3
 
+def test_analyzing_track7_gpx():
+    file = "../resources/track7.gpx"
+
+    analyzer = TrackAnalyzer(file)
+    if not analyzer.analyze():
+        analyzer = TrackAnalyzer(file)
+        analyzer.analyze(True)
+    assert abs(analyzer.data["slope_100"] - 17.88) < 0.01
+    assert abs(analyzer.data["vertical_velocity_60s_+"] - 0.4) < 0.01
+    assert abs(analyzer.data["avg_velocity_10km"] - 26.99) < 0.01
+    assert analyzer.data["power_2h"] == 192
+    assert analyzer.duration < 3
 
 def test_analyzing_track3_gpx():
-    file = "resources/track3.gpx"
+    file = "../resources/track3.gpx"
 
     analyzer = TrackAnalyzer(file)
     analyzer.analyze()
@@ -113,7 +125,7 @@ def test_analyzing_track3_gpx():
 
 
 def test_analyzing_track4_gpx():
-    file = "resources/track4.gpx"
+    file = "../resources/track4.gpx"
 
     analyzer = TrackAnalyzer(file)
     analyzer.analyze()
@@ -124,16 +136,16 @@ def test_analyzing_track4_gpx():
 
 
 def test_analyzing_track5_gpx():
-    file = "resources/track5.gpx"
+    file = "../resources/track5.gpx"
 
     analyzer = TrackAnalyzer(file)
-    analyzer.set_all_points_with_distance()
+    analyzer.set_all_points_with_distance(False)
     analyzer.calculate_data_with_gpxpy()
     assert analyzer.data["moving_distance"] == 30765.68
 
 
 def test_reduce_track_to_relevant_elevation_points():
-    file = "resources/track3.gpx"
+    file = "../resources/track3.gpx"
     gpx_file = open(file, 'r')
     gpx = gpxpy.parse(gpx_file)
     reduced_track_points_for_interval = reduce_track_to_relevant_elevation_points(

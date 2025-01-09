@@ -34,7 +34,7 @@ class VelocityTrackAnalyzer(object):
 
     def get_time_entries(self):
         for i, e in enumerate(self.points_with_time):
-            if i != 0 and abs((e.time - self.points_with_time[i - 1].time).days) > 1:
+            if i == 0 or abs((e.time - self.points_with_time[i - 1].time).days) > 1:
                 time = 1
             else:
                 time = (e.time - self.points_with_time[i - 1].time).seconds

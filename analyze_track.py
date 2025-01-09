@@ -12,9 +12,10 @@ _LOGGER = logging.getLogger(__name__)
 def main():
     args = _parse_arguments()
     analyzer = TrackAnalyzer(args.input_file)
-    analyzer.analyze()
+    if not analyzer.analyze():
+        analyzer = TrackAnalyzer(args.input_file)
+        analyzer.analyze(True)
     analyzer.write_data_and_extension_to_file(args.output_file)
-
 
 def _parse_arguments():
     parser = argparse.ArgumentParser(description="Analyze given track.")

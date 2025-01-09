@@ -38,7 +38,6 @@ class TrackAnalyzer(object):
         self.data = {}
         self.all_points: List[GPXTrackPoint] = []
         self.gpx = None
-        self.distance_entries = []
         self.duration = 0
         self.split_files = split_files
 
@@ -64,24 +63,31 @@ class TrackAnalyzer(object):
             json.dump(self.data, fp, indent=4)
         print(f"Written data of track to {gpx_file_gpxpy}")
 
-    def analyze(self):
+    def analyze(self, track_is_non_monotonic=False) -> bool:
         start_time = datetime.datetime.now()
-        self.set_all_points_with_distance()
+        self.set_all_points_with_distance(track_is_non_monotonic)
         self.calculate_data_with_gpxpy()
         points = [e for e in self.all_points if e.time]
         try:
             self.data.update(ElevationTrackAnalyzer(points).analyze())
         except Exception as err:
+            if err.args[0] == 'index values must be monotonic':
+                return False
             print(f"ElevationTrackAnalyzer failed with {err}")
         try:
             self.data.update(PowerTrackAnalyzer(points).analyze())
         except Exception as err:
+            if err.args[0] == 'index values must be monotonic':
+                return False
             print(f"PowerTrackAnalyzer failed with {err}")
         try:
             self.data.update(VelocityTrackAnalyzer(points, self.split_files).analyze())
         except Exception as err:
+            if err.args[0] == 'index values must be monotonic':
+                return False
             print(f"VelocityTrackAnalyzer failed with {err}")
         self.duration = (datetime.datetime.now() - start_time).total_seconds()
+        return True
 
     def calculate_data_with_gpxpy(self):
         extremes = self.gpx.get_elevation_extremes()
@@ -108,7 +114,7 @@ class TrackAnalyzer(object):
             else:
                 self.gpx = gpxpy.parse(f)
 
-    def set_all_points_with_distance(self):
+    def set_all_points_with_distance(self, track_is_non_monotonic):
         print(f"Read and add distance to track file {self.file}")
         if self.gpx_file:
             if self.gpx is None:
@@ -120,14 +126,15 @@ class TrackAnalyzer(object):
                     delta = 0.0
                     for i, point in enumerate(segment.points):
                         point.extensions_calculated = Extension.parse(point.extensions)
+                        point_distance = point.extensions_calculated.distance
                         if point.latitude != 0 and point.longitude != 0:
                             if (i == 0
                                     and len(self.all_points) > 0
-                                    and point.extensions_calculated.distance == 0
-                                    and point.extensions_calculated.distance < self.all_points[
-                                        -1].extensions_calculated.distance):
+                                    and point_distance == 0
+                                    and point_distance < self.all_points[-1].extensions_calculated.distance
+                            ):
                                 delta = self.all_points[-1].extensions_calculated.distance
-                            if point.extensions_calculated.distance == 0.0:
+                            if point_distance == 0.0:
                                 if i != 0:
                                     distance += geopy.distance.distance(
                                         (points[-1].latitude, points[-1].longitude),
@@ -136,6 +143,11 @@ class TrackAnalyzer(object):
                                 point.extensions_calculated.distance = distance * 1000 + delta
                             elif delta > 0:
                                 point.extensions_calculated.distance += delta
+                            if track_is_non_monotonic:
+                                if i != 0 and point_distance < segment.points[i - 1].extensions_calculated.distance:
+                                    point.extensions_calculated.distance = segment.points[
+                                        i - 1].extensions_calculated.distance
+
                             self.all_points.append(point)
                             points.append(point)
                     segment.points = points
