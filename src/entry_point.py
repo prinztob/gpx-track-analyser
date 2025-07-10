@@ -38,17 +38,35 @@ def init_api(user_name, password, output_file):
             f"They will be stored in '{token_store}' for future use.\n"
         )
         try:
-            garmin = Garmin(user_name, password)
-            garmin.login()
+            garmin = Garmin(
+                email=user_name, password=password, return_on_mfa=True
+            )
+            result1, result2 = garmin.login()
+            if result1 == "needs_mfa":  # MFA is required
+                mfa_code = get_mfa()
+                garmin.resume_login(result2, mfa_code)
+
+            # Save Oauth1 and Oauth2 token files to directory for next login
             garmin.garth.dump(token_store)
+            print(
+                f"Oauth tokens stored in '{token_store}' directory for future use. (first method)\n"
+            )
+            garmin.login(token_store)
             return garmin
-        except (FileNotFoundError, GarthHTTPError, GarminConnectAuthenticationError,
-                requests.exceptions.HTTPError) \
-                as err:
+        except (
+            FileNotFoundError,
+            GarthHTTPError,
+            GarminConnectAuthenticationError,
+            requests.exceptions.HTTPError,
+        ) as err:
             return f"return code: 1Error occurred during Garmin Connect Client init: {err}"
         except Exception as err:
             return f"return code: 1Unknown error occurred during Garmin Connect Client init {err}"
 
+def get_mfa():
+    """Get MFA."""
+
+    return input("MFA one-time code: ")
 
 def get_activities_by_date(api, start_date, end_date, activity_type):
     """Return available activities."""
