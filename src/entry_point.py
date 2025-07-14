@@ -160,7 +160,8 @@ def get_activity_json_for_date(client, selected_date):
     try:
         activities = get_activities_by_date(client, selected_date, selected_date, None)
         for activity in activities:
-            activity["vo2MaxPreciseValue"] = get_precise_vo2max(client, selected_date)
+            if "vo2MaxPreciseValue" not in activity:
+                activity["vo2MaxPreciseValue"] = get_precise_vo2max(client, selected_date)
         return json.dumps(activities)
     except (
             GarminConnectConnectionError,
@@ -281,7 +282,7 @@ def download_activities_by_date(api, folder, start_date, end_date=date.today()):
             else:
                 activity["childIds"] = []
             start_time_local = activity["startTimeLocal"].split(" ")
-            if start_time_local and len(start_time_local) == 2:
+            if start_time_local and len(start_time_local) == 2 and "vo2MaxPreciseValue" not in activity:
                 activity["vo2MaxPreciseValue"] = get_precise_vo2max(api, start_time_local[0])
             output_file = f"{folder}/activity_{str(activity_id)}.json"
             with open(output_file, "w+") as fb:
@@ -305,13 +306,13 @@ def get_precise_vo2max(api, selected_date):
     data = api.get_max_metrics(selected_date)
     if len(data) > 0:
         if data[0]["generic"] and "vo2MaxPreciseValue" in data[0]["generic"]:
-            vo2MaxPreciseValue = data[0]["generic"]['vo2MaxPreciseValue']
-            print(f"Found vo2MaxPreciseValue {vo2MaxPreciseValue}.")
-            return vo2MaxPreciseValue
+            vo2_max_precise_value = data[0]["generic"]['vo2MaxPreciseValue']
+            print(f"Found vo2MaxPreciseValue {vo2_max_precise_value}.")
+            return vo2_max_precise_value
         elif data[0]["cycling"] and "vo2MaxPreciseValue" in data[0]["cycling"]:
-            vo2MaxPreciseValue = data[0]["cycling"]['vo2MaxPreciseValue']
-            print(f"Found vo2MaxPreciseValue {vo2MaxPreciseValue}.")
-            return vo2MaxPreciseValue
+            vo2_max_precise_value = data[0]["cycling"]['vo2MaxPreciseValue']
+            print(f"Found vo2MaxPreciseValue {vo2_max_precise_value}.")
+            return vo2_max_precise_value
     return 0.0
 
 
