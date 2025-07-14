@@ -28,7 +28,7 @@ def test_analyzing_track_gpx():
     output_file_yaml = tempfile.NamedTemporaryFile(suffix=".yaml")
     gpx_file_gpxpy = output_file.name.replace(".gpx", "_gpxpy.json")
     analyzer.write_data_and_extension_to_file(gpx_file_gpxpy, output_file_yaml.name)
-    extensions = yaml.load(open(output_file_yaml.name, "r"))
+    extensions = yaml.safe_load(open(output_file_yaml.name, "r"))
     extension_points = [Extension.parse_from_yaml(e) for e in extensions["extensions"]]
     assert len(get_points(gpx)) == 5683
     assert extension_points[66].distance > 0.0
@@ -93,6 +93,9 @@ def test_analyzing_track7_gpx():
     assert abs(analyzer.data["vertical_velocity_60s_+"] - 0.4) < 0.01
     assert abs(analyzer.data["avg_velocity_10km"] - 26.99) < 0.01
     assert analyzer.data["power_2h"] == 192
+    assert analyzer.data["power_3h"] == 163
+    assert analyzer.data["power_4h"] == 151
+    assert analyzer.data["power_5h"] == 121
     assert analyzer.duration < 3
 
 def test_analyzing_track3_gpx():
@@ -116,6 +119,10 @@ def test_analyzing_track3_gpx():
     assert analyzer.data["power_20min"] == 243
     assert analyzer.data["power_30min"] == 235
     assert analyzer.data["power_1h"] == 197
+    assert analyzer.data["power_2h"] == 172
+    assert analyzer.data["power_3h"] == 167
+    assert analyzer.data["power_4h"] == 156
+    assert analyzer.data["power_5h"] == 133
     assert analyzer.all_points[55].extensions_calculated.power60s == 206
     assert analyzer.all_points[55].extensions_calculated.power == 236
     assert analyzer.all_points[55].extensions_calculated.hr == 112
