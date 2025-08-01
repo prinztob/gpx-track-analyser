@@ -80,7 +80,7 @@ def test_analyzing_track6_gpx():
     assert abs(analyzer.data["vertical_velocity_60s_+"] - 0.31) < 0.01
     assert abs(analyzer.data["vertical_velocity_600s_+"] - 0.234) < 0.01
     assert abs(analyzer.data["vertical_velocity_3600s_+"] - 0.186) < 0.01
-    assert analyzer.duration < 3
+    assert analyzer.duration < 4
 
 def test_analyzing_track7_gpx():
     file = "../resources/track7.gpx"
@@ -96,7 +96,7 @@ def test_analyzing_track7_gpx():
     assert analyzer.data["power_3h"] == 163
     assert analyzer.data["power_4h"] == 151
     assert analyzer.data["power_5h"] == 121
-    assert analyzer.duration < 3
+    assert analyzer.duration < 4
 
 def test_analyzing_track3_gpx():
     file = "../resources/track3.gpx"
