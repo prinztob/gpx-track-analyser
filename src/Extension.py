@@ -54,7 +54,7 @@ class Extension:
                         extension.slope = float(el.text)
                     elif "vvelocity" in el.tag or "verticalVelocity" in el.tag:
                         extension.verticalVelocity = float(el.text)
-                except:
+                except Exception:
                     failed_count += 1
         return extension
 
@@ -80,6 +80,6 @@ class Extension:
                     extension.slope = v
                 elif "vvelocity" == k or "verticalVelocity" == k:
                     extension.verticalVelocity = v
-            except:
+            except Exception:
                 failed_count += 1
         return extension

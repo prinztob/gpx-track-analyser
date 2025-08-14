@@ -4,16 +4,16 @@ from typing import List
 from gpxpy.gpx import GPXTrackPoint
 from pandas import DataFrame, to_datetime
 
-from src.utils import get_cleaned_track_elevation_deltas
+from src.utils import get_cleaned_track_elevation
 
 
 class ElevationTrackAnalyzer(object):
     def __init__(self, points_with_time: List[GPXTrackPoint]):
         self.points_with_time = points_with_time
-        self.time_entries = []
-        self.data = {}
+        self.time_entries: List[datetime.datetime] = []
+        self.data: dict[str, int] = {}
 
-    def set_time_entries(self):
+    def set_time_entries(self) -> None:
         for i, e in enumerate(self.points_with_time):
             if i != 0 and abs((e.time - self.time_entries[-1]).days) > 1:
                 self.time_entries.append(
@@ -22,9 +22,9 @@ class ElevationTrackAnalyzer(object):
             else:
                 self.time_entries.append(e.time)
 
-    def analyze(self) -> dict:
+    def analyze(self) -> dict[str, int]:
         self.set_time_entries()
-        deltas = get_cleaned_track_elevation_deltas(self.points_with_time)
+        deltas = get_cleaned_track_elevation(self.points_with_time)
         positive_deltas = [(e if e > 0 else 0) for e in deltas]
         negative_deltas = [(abs(e) if e < 0 else 0) for e in deltas]
         max_period = len(self.time_entries) - 1
@@ -55,8 +55,8 @@ class ElevationTrackAnalyzer(object):
         return self.data
 
     def set_velocity_per_time_entries(
-        self, positive_deltas, velocity_per_time_entries, sign
-    ):
+        self, positive_deltas: List[int], velocity_per_time_entries: List['VerticalVelocityPerTime'], sign: str
+    ) -> None:
         if len(positive_deltas) > 0 and len(positive_deltas) == len(self.time_entries):
             duration = (self.time_entries[-1] - self.time_entries[0]).seconds
             df = DataFrame({"deltas": positive_deltas})

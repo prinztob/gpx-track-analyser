@@ -10,7 +10,7 @@ SUFFIX = "_simplified"
 
 
 def reduce_track_to_relevant_elevation_points(
-    points: List[GPXTrackPoint],
+        points: List[GPXTrackPoint],
 ) -> List[Tuple[int, GPXTrackPoint]]:
     reduced_points: List[Tuple[int, GPXTrackPoint]] = []
     points_with_doubles: List[Tuple[int, GPXTrackPoint]] = []
@@ -43,10 +43,10 @@ def reduce_track_to_relevant_elevation_points(
         if j == 0 or j == len(points_with_doubles) - 1:
             reduced_points.append(point)
         elif (
-            current_elevation != last_elevation and current_elevation != next_elevation
+                current_elevation != last_elevation and current_elevation != next_elevation
         ):
             if math.copysign(1, current_elevation - last_elevation) != math.copysign(
-                1, next_elevation - current_elevation
+                    1, next_elevation - current_elevation
             ):
                 reduced_points.append(point)
         j += 1
@@ -54,7 +54,7 @@ def reduce_track_to_relevant_elevation_points(
 
 
 def remove_elevation_differences_smaller_as(
-    points: List[Tuple[int, GPXTrackPoint]], minimal_delta
+        points: List[Tuple[int, GPXTrackPoint]], minimal_delta: int
 ) -> (List[Tuple[int, GPXTrackPoint]], int, int):
     filtered_points: List[Tuple[int, GPXTrackPoint]] = []
     elevation_gain = 0.0
@@ -92,28 +92,7 @@ def remove_elevation_differences_smaller_as(
     return filtered_points, elevation_gain, elevation_loss
 
 
-def estimate_coefficients(x_array, y_array):
-    n = len(x_array)
-    s_x = sum(x_array)
-    s_y = sum(y_array)
-
-    # calculating cross-deviation and deviation about x
-    ss_xy = sum([x_array[i] * y_array[i] for i in range(0, n)])
-    ss_xx = sum([x_array[i] * x_array[i] for i in range(0, n)])
-    ss_yy = sum([y_array[i] * y_array[i] for i in range(0, n)])
-
-    # calculating regression coefficients
-    b_1 = (n * ss_xy - s_x * s_y) / (n * ss_xx - s_x * s_x)
-    b_0 = s_y / n - b_1 * s_x / n
-    divisor = math.sqrt((n * ss_xx - s_x * s_x) * (n * ss_yy - s_y * s_y))
-    if divisor > 0:
-        r = (n * ss_xy - s_x * s_y) / divisor
-    else:
-        r = 0
-    return b_0, b_1, r
-
-
-def get_cleaned_track_elevation_deltas(points, get_delta=True):
+def get_cleaned_track_elevation(points: List[GPXTrackPoint], get_delta: bool = True) -> List[GPXTrackPoint]:
     flattened_points: List[GPXTrackPoint] = []
     reduced_track_points_for_interval = reduce_track_to_relevant_elevation_points(
         points
@@ -142,9 +121,17 @@ def get_cleaned_track_elevation_deltas(points, get_delta=True):
     return filtered_points
 
 
+def get_cleaned_track_elevation_deltas(points: List[GPXTrackPoint]) -> List[int]:
+    cleaned_track_elevation_points = get_cleaned_track_elevation(points)
+    return [
+        (0.0 if i == 0 else e.elevation - cleaned_track_elevation_points[i - 1].elevation)
+        for i, e in enumerate(cleaned_track_elevation_points)
+    ]
+
+
 def fill_missing_points(start_point, end_point, points):
     res = []
-    points_in_between = points[start_point[0] + 1 : end_point[0] - 1]
+    points_in_between = points[start_point[0] + 1: end_point[0] - 1]
     if len(points_in_between) > 0:
         res.append(points_in_between[0])
         is_increasing = start_point[1].elevation < end_point[1].elevation
