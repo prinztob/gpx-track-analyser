@@ -62,8 +62,7 @@ class PowerTrackAnalyzer(object):
         if len(set(self.power_entries)) > 1 and len(self.power_entries) == len(
             self.time_entries
         ):
-            df = DataFrame({"power": self.power_entries})
-            df.index = self.time_entries
+            df = DataFrame({"power": self.power_entries}, index=self.time_entries)
 
             self.data["power_avg"] = int(
                 max(

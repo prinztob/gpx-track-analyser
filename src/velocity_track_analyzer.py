@@ -82,8 +82,7 @@ class VelocityTrackAnalyzer(object):
             AverageVelocityPerDistance(100),
         ]
         if len(self.distance_entries) == len(self.time_deltas):
-            df = DataFrame({"time": self.time_deltas})
-            df.index = to_datetime(self.distance_entries, unit="s")
+            df = DataFrame({"time": self.time_deltas}, index =to_datetime(self.distance_entries, unit="s"))
 
             for entry in entries:
                 if max(self.distance_entries) > entry.window_in_m:
