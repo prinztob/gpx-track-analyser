@@ -38,7 +38,7 @@ class Extension:
         if len(extensionsFromGpx) > 0:
             for el in extensionsFromGpx[0]:
                 try:
-                    if 'distance' in el.tag:
+                    if "distance" in el.tag:
                         extension.distance = float(el.text)
                     elif "power" in el.tag:
                         extension.power = int(el.text)
@@ -64,7 +64,7 @@ class Extension:
         failed_count = 0
         for k, v in extensions.items():
             try:
-                if 'distance' == k:
+                if "distance" == k:
                     extension.distance = v
                 elif "power" == k:
                     extension.power = v

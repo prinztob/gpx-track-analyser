@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "gpx_track_analyzer"
+version = "0.1.0"
+description = "helper tool for analyzing gpx tracks"
+authors = ["prinztob"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+pydantic="1.10.22" # use 1xx version on android device, 2xx version does not work because it needs rust
+garth="0.5.16"
+garminconnect="0.2.28"
+requests="2.32.4"
+gpxpy="1.6.2"
+geopy="2.4.1"
+lxml="5.3.0"
+python-tcxparser="2.3.0"
+tcxreader="0.4.11"
+dateutils="0.6.12"
+pandas="2.2.3"
+PyYAML="6.0.2"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.11.2"
+ruff = "^0.9.10"
+pytest = "^8.4.1"
+types-pyyaml = "^6.0.12.20250809"
+types-requests = "^2.32.4.20250809"
+
+[bild-system]
+requires = ["poetry-core"]
+build-backend = ["poetry.core.masonry.api"]
+
+target-version = "py313"
+
+[tool.mypy]
+strict = true

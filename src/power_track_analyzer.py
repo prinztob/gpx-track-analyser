@@ -19,9 +19,13 @@ class PowerTrackAnalyzer(object):
             if i != 0:
                 diff = abs((point.time - self.points_with_time[i - 1].time).seconds)
                 if 5 < diff < 300:
-                    for seconds in range(1, abs((point.time - self.points_with_time[i - 1].time).seconds)):
+                    for seconds in range(
+                        1, abs((point.time - self.points_with_time[i - 1].time).seconds)
+                    ):
                         self.time_entries.append(
-                            self.points_with_time[i - 1].time + datetime.timedelta(seconds=seconds))
+                            self.points_with_time[i - 1].time
+                            + datetime.timedelta(seconds=seconds)
+                        )
                         self.power_entries.append(0)
                 if diff < 300:
                     self.time_entries.append(point.time)
@@ -35,7 +39,8 @@ class PowerTrackAnalyzer(object):
         if duration_to_add > 0:
             for seconds in range(1, duration_to_add):
                 self.time_entries.append(
-                    self.points_with_time[-1].time + datetime.timedelta(seconds=seconds))
+                    self.points_with_time[-1].time + datetime.timedelta(seconds=seconds)
+                )
                 self.power_entries.append(0)
 
     def analyze(self) -> dict:
@@ -52,17 +57,30 @@ class PowerTrackAnalyzer(object):
             PowerPerTime(7200, "2h"),
             PowerPerTime(10800, "3h"),
             PowerPerTime(14400, "4h"),
-            PowerPerTime(18000, "5h")
+            PowerPerTime(18000, "5h"),
         ]
-        if len(set(self.power_entries)) > 1 and len(self.power_entries) == len(self.time_entries):
-            df = DataFrame({'power': self.power_entries})
+        if len(set(self.power_entries)) > 1 and len(self.power_entries) == len(
+            self.time_entries
+        ):
+            df = DataFrame({"power": self.power_entries})
             df.index = self.time_entries
 
             self.data["power_avg"] = int(
-                max(df.rolling(f"{self.duration}s", min_periods=self.max_period).mean().dropna().values))
+                max(
+                    df.rolling(f"{self.duration}s", min_periods=self.max_period)
+                    .mean()
+                    .dropna()
+                    .values
+                )
+            )
             for entry in power_per_time_entries:
                 if self.duration > entry.time_interval * 0.8:
-                    values = df.rolling(entry.window, min_periods=entry.time_interval).mean().dropna().values
+                    values = (
+                        df.rolling(entry.window, min_periods=entry.time_interval)
+                        .mean()
+                        .dropna()
+                        .values
+                    )
                     if entry.window == "1min":
                         for i, e in enumerate(self.points_with_time):
                             if i < len(values) - 1:
@@ -71,9 +89,17 @@ class PowerTrackAnalyzer(object):
                         self.data[entry.json_key_interval] = int(max(values))
                     else:
                         means = df.rolling(entry.window).mean().dropna()
-                        values_2nd_try = means.loc[(df.index >= df.index[0] + datetime.timedelta(seconds=entry.time_interval))].values
+                        values_2nd_try = means.loc[
+                            (
+                                df.index
+                                >= df.index[0]
+                                + datetime.timedelta(seconds=entry.time_interval)
+                            )
+                        ].values
                         if len(values_2nd_try) > 0:
-                            self.data[entry.json_key_interval] = int(max(values_2nd_try))
+                            self.data[entry.json_key_interval] = int(
+                                max(values_2nd_try)
+                            )
         return self.data
 
 

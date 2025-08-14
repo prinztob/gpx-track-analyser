@@ -11,7 +11,9 @@ def convert_tcx_to_gpx(in_file_path, out_file_path=None, name=""):
     has_cadence = data.cadence_avg is not None and data.cadence_avg > 0
     print(f"Extracting track points from tcx file {in_file_path}")
     gpx_from_tcx = gpx.GPX()
-    gpx_from_tcx.nsmap["gpxtpx"] = "http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+    gpx_from_tcx.nsmap["gpxtpx"] = (
+        "http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+    )
     gpx_from_tcx.name = name
     gpx_from_tcx.description = ""
     gpx_track = gpx.GPXTrack(
@@ -35,7 +37,7 @@ def convert_tcx_to_gpx(in_file_path, out_file_path=None, name=""):
                 ElementTree.fromstring(f"""<gpxtpx:TrackPointExtension xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
                     {f"<gpxtpx:hr>{point.hr_value}</gpxtpx:hr>" if has_hr else ""}
                     {f"<gpxtpx:cadence>{point.cadence}</gpxtpx:cadence>" if has_cadence else ""}
-                    {f"<gpxtpx:power>{point.tpx_ext['Watts']}</gpxtpx:power>" if 'Watts' in point.tpx_ext else ""}
+                    {f"<gpxtpx:power>{point.tpx_ext['Watts']}</gpxtpx:power>" if "Watts" in point.tpx_ext else ""}
                     {f"<gpxtpx:distance>{point.distance}</gpxtpx:distance>"}
                     </gpxtpx:TrackPointExtension>
                 """)
