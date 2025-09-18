@@ -19,6 +19,7 @@ from src.tcx_to_gpx import convert_tcx_to_gpx
 from .Extension import Extension
 from .gpx_track_analyzer import TrackAnalyzer
 
+cycling_ids = [2,5,10,19,20,21,22,25,89,143]
 
 def init_api(user_name: str, password: str, output_file: str) -> Garmin | str:
     """Initialize Garmin API with your credentials."""
@@ -172,7 +173,7 @@ def get_activity_json_for_date(client: Garmin, selected_date: str) -> str:
         for activity in activities:
             if "vo2MaxPreciseValue" not in activity:
                 activity["vo2MaxPreciseValue"] = get_precise_vo2max(
-                    client, selected_date
+                    client, selected_date, activity
                 )
         return json.dumps(activities)
     except (
@@ -192,7 +193,12 @@ def get_activity_json_for_date(client: Garmin, selected_date: str) -> str:
         )
 
 
-def download_tcx(api: Garmin, activity_id: str, output_file_tcx: str, output_file_gpx: str) -> str:
+def is_cycling(activity):
+    return activity["activityType"]["typeId"] in cycling_ids if "activityType" in activity and "typeId" in activity[
+        "eventType"] else False
+
+
+def download_tcx(api, activity_id, output_file_tcx, output_file_gpx):
     try:
         gpx_data = api.download_activity(
             activity_id, dl_fmt=Garmin.ActivityDownloadFormat.TCX
@@ -278,6 +284,22 @@ def get_power_data(api: Garmin, selected_date: str) -> dict[str, Any] | str:
         return f"return code: 1Unknown error occurred during Garmin Connect Client get power data {err}"
 
 
+def get_vo2max(api, selected_date):
+    """
+    Get vo2Max
+    """
+    try:
+        return get_precise_vo2max(api, selected_date, get_activities_by_date(api, selected_date, selected_date, None)[0])
+    except (
+            GarminConnectConnectionError,
+            GarminConnectAuthenticationError,
+            GarminConnectTooManyRequestsError,
+    ) as err:
+        return f"return code: 1Error occurred during Garmin Connect Client get vo2max: {err}"
+    except Exception as err:  # pylint: disable=broad-except
+        return f"return code: 1Unknown error occurred during Garmin Connect Client get vo2max {err}"
+
+
 def download_activities_by_date(api: Garmin, folder: str, start_date: datetime, end_date: datetime=date.today()) -> str:
     try:
         print(f"Download activities between {start_date} and {end_date}.")
@@ -308,7 +330,7 @@ def download_activities_by_date(api: Garmin, folder: str, start_date: datetime, 
                     and "vo2MaxPreciseValue" not in activity
             ):
                 activity["vo2MaxPreciseValue"] = get_precise_vo2max(
-                    api, start_time_local[0]
+                    api, start_time_local[0], activity
                 )
             output_file = f"{folder}/activity_{str(activity_id)}.json"
             with open(output_file, "w+") as fb:
@@ -329,15 +351,16 @@ def download_activities_by_date(api: Garmin, folder: str, start_date: datetime, 
         return f"return code: 1Unknown error occurred during Garmin Connect Client download activities by date {err}"
 
 
-def get_precise_vo2max(api: Garmin, selected_date: str) -> float:
-    data = api.get_max_metrics(selected_date)
+def get_precise_vo2max(api: Garmin, selected_date: str, activity: dict[str, Any]) -> float:
+    url = f"/metrics-service/metrics/maxmet/latest/{selected_date}"
+    data = api.connectapi(url)
     if len(data) > 0:
-        if data[0]["generic"] and "vo2MaxPreciseValue" in data[0]["generic"]:
-            vo2_max_precise_value = data[0]["generic"]["vo2MaxPreciseValue"]
+        if is_cycling(activity) and data["cycling"] and "vo2MaxPreciseValue" in data["cycling"]:
+            vo2_max_precise_value = data["cycling"]["vo2MaxPreciseValue"]
             print(f"Found vo2MaxPreciseValue {vo2_max_precise_value}.")
             return vo2_max_precise_value
-        elif data[0]["cycling"] and "vo2MaxPreciseValue" in data[0]["cycling"]:
-            vo2_max_precise_value = data[0]["cycling"]["vo2MaxPreciseValue"]
+        elif data["generic"] and "vo2MaxPreciseValue" in data["generic"]:
+            vo2_max_precise_value = data["generic"]["vo2MaxPreciseValue"]
             print(f"Found vo2MaxPreciseValue {vo2_max_precise_value}.")
             return vo2_max_precise_value
     return 0.0
@@ -452,7 +475,7 @@ def update_distance(gpx_with_correct_distances: GPX, gpx_track_to_be_updated: GP
                     delta_first_track + point.extensions_calculated.distance,
                     point,
                     "distance",
-                )
+                    )
                 points.append(point)
             segment.points = points
 
