@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Dict
+from typing import Any
+from xml.etree.ElementTree import Element
 
 
 @dataclass
@@ -13,7 +14,7 @@ class Extension:
     slope: float = 0.0
     verticalVelocity: float = 0.0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict[str, Any]:
         values = {"distance": round(self.distance, 1)}
         if self.cadence > 0:
             values["cadence"] = self.cadence
@@ -32,34 +33,35 @@ class Extension:
         return values
 
     @staticmethod
-    def parse(extensionsFromGpx):
+    def parse(extensions_from_gpx: list[Element]) -> "Extension":
         extension = Extension()
         failed_count = 0
-        if len(extensionsFromGpx) > 0:
-            for el in extensionsFromGpx[0]:
+        if len(extensions_from_gpx) > 0:
+            for el in extensions_from_gpx[0]:
                 try:
-                    if "distance" in el.tag:
-                        extension.distance = float(el.text)
-                    elif "power" in el.tag:
-                        extension.power = int(el.text)
-                    elif "power60s" in el.tag:
-                        extension.power60s = int(el.text)
-                    elif "cad" in el.tag or "cadence" in el.tag:
-                        extension.cadence = int(el.text)
-                    elif "speed" in el.tag:
-                        extension.speed = float(el.text)
-                    elif "hr" in el.tag:
-                        extension.hr = int(el.text)
-                    elif "slope" in el.tag:
-                        extension.slope = float(el.text)
-                    elif "vvelocity" in el.tag or "verticalVelocity" in el.tag:
-                        extension.verticalVelocity = float(el.text)
+                    if el.text:
+                        if "distance" in el.tag:
+                            extension.distance = float(el.text)
+                        elif "power" in el.tag:
+                            extension.power = int(el.text)
+                        elif "power60s" in el.tag:
+                            extension.power60s = int(el.text)
+                        elif "cad" in el.tag or "cadence" in el.tag:
+                            extension.cadence = int(el.text)
+                        elif "speed" in el.tag:
+                            extension.speed = float(el.text)
+                        elif "hr" in el.tag:
+                            extension.hr = int(el.text)
+                        elif "slope" in el.tag:
+                            extension.slope = float(el.text)
+                        elif "vvelocity" in el.tag or "verticalVelocity" in el.tag:
+                            extension.verticalVelocity = float(el.text)
                 except Exception:
                     failed_count += 1
         return extension
 
     @staticmethod
-    def parse_from_yaml(extensions: dict):
+    def parse_from_yaml(extensions: dict[str, Any]) -> "Extension":
         extension = Extension()
         failed_count = 0
         for k, v in extensions.items():

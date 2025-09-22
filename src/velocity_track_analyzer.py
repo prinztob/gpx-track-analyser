@@ -1,14 +1,13 @@
 import json
 from dataclasses import dataclass
-from typing import List
 
 from gpxpy.gpx import GPXTrackPoint
 from pandas import DataFrame, to_datetime
 
 
-def get_velocity_entries_from_garmin(split_files: List[str]) -> List["VelocityEntry"]:
+def get_velocity_entries_from_garmin(split_files: list[str]) -> list["VelocityEntry"]:
     if split_files:
-        velocity_entries: List["VelocityEntry"] = []
+        velocity_entries: list["VelocityEntry"] = []
         for file in split_files:
             data = json.load(open(file))
             if "lapDTOs" in data:
@@ -24,27 +23,32 @@ def get_velocity_entries_from_garmin(split_files: List[str]) -> List["VelocityEn
 
 
 class VelocityTrackAnalyzer(object):
-    def __init__(self, points: List[GPXTrackPoint], split_files: List[str] = None):
+    def __init__(
+        self, points: list[GPXTrackPoint], split_files: list[str] | None = None
+    ):
         self.points_with_time = points
-        self.time_deltas = []
+        self.time_deltas: list[int] = []
         self.distance_entries = [
-            p.extensions_calculated.distance for p in self.points_with_time
+            p.extensions_calculated.distance  # type: ignore[attr-defined]
+            for p in self.points_with_time
         ]
-        self.velocity_entries_from_garmin = get_velocity_entries_from_garmin(
-            split_files
+        self.velocity_entries_from_garmin = (
+            get_velocity_entries_from_garmin(split_files) if split_files else []
         )
-        self.data = {}
+        self.data: dict[str, float] = {}
 
-    def get_time_entries(self):
+    def set_time_entries(self) -> None:
         for i, e in enumerate(self.points_with_time):
-            if i == 0 or abs((e.time - self.points_with_time[i - 1].time).days) > 1:
-                time = 1
-            else:
-                time = (e.time - self.points_with_time[i - 1].time).seconds
-            self.time_deltas.append(time)
+            last_point = self.points_with_time[i - 1]
+            if e.time and last_point.time:
+                if i == 0 or abs((e.time - last_point.time).days) > 1:
+                    time = 1
+                else:
+                    time = (e.time - last_point.time).seconds
+                self.time_deltas.append(time)
 
     def get_average_velocity_for_kilometers(self, kilometer: int) -> float:
-        velocities_in_kilometer_interval: List[float] = []
+        velocities_in_kilometer_interval: list[float] = []
         for i, e in enumerate(self.velocity_entries_from_garmin):
             sum_kilometers = 0.0
             sum_duration_hours = 0.0
@@ -67,8 +71,8 @@ class VelocityTrackAnalyzer(object):
             else 0.0
         )
 
-    def analyze(self) -> dict:
-        self.get_time_entries()
+    def analyze(self) -> dict[str, float]:
+        self.set_time_entries()
         entries = [
             AverageVelocityPerDistance(1),
             AverageVelocityPerDistance(5),
@@ -82,7 +86,10 @@ class VelocityTrackAnalyzer(object):
             AverageVelocityPerDistance(100),
         ]
         if len(self.distance_entries) == len(self.time_deltas):
-            df = DataFrame({"time": self.time_deltas}, index =to_datetime(self.distance_entries, unit="s"))
+            df = DataFrame(
+                {"time": self.time_deltas},
+                index=to_datetime(self.distance_entries, unit="s"),
+            )
 
             for entry in entries:
                 if max(self.distance_entries) > entry.window_in_m:

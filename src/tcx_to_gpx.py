@@ -1,10 +1,12 @@
 from xml.etree import ElementTree
 
 from gpxpy import gpx
-from tcxreader.tcxreader import TCXReader
+from tcxreader.tcxreader import TCXReader  # type: ignore[import-untyped]
 
 
-def convert_tcx_to_gpx(in_file_path, out_file_path=None, name=""):
+def convert_tcx_to_gpx(
+    in_file_path: str, out_file_path: str | None = None, name: str = ""
+) -> None:
     tcx_reader = TCXReader()
     data = tcx_reader.read(in_file_path)
     has_hr = data.hr_avg is not None and data.hr_avg > 0
