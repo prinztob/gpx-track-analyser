@@ -12,16 +12,17 @@ logging.basicConfig(
 _LOGGER = logging.getLogger(__name__)
 
 
-def main():
+def main() -> int:
     args = _parse_arguments()
     analyzer = TrackAnalyzer(args.input_file)
     if not analyzer.analyze():
         analyzer = TrackAnalyzer(args.input_file)
         analyzer.analyze(True)
     analyzer.write_data_and_extension_to_file(args.output_file)
+    return 0
 
 
-def _parse_arguments():
+def _parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analyze given track.")
     parser.add_argument(
         "--input_file",

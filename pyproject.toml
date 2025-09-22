@@ -6,7 +6,7 @@ authors = ["prinztob"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.12"
 pydantic="1.10.22" # use 1xx version on android device, 2xx version does not work because it needs rust
 garth="0.5.16"
 garminconnect="0.2.28"

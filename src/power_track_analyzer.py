@@ -8,42 +8,47 @@ from pandas import DataFrame
 class PowerTrackAnalyzer(object):
     def __init__(self, points: List[GPXTrackPoint]):
         self.points_with_time = points
-        self.time_entries = []
-        self.power_entries = []
-        self.data = {}
+        self.time_entries: list[datetime.datetime] = []
+        self.power_entries: list[int] = []
+        self.data: dict[str, int] = {}
         self.duration = 0
         self.max_period = 0
 
-    def set_time_entries(self):
+    def set_time_entries(self) -> None:
         for i, point in enumerate(self.points_with_time):
-            if i != 0:
-                diff = abs((point.time - self.points_with_time[i - 1].time).seconds)
-                if 5 < diff < 300:
-                    for seconds in range(
-                        1, abs((point.time - self.points_with_time[i - 1].time).seconds)
-                    ):
-                        self.time_entries.append(
-                            self.points_with_time[i - 1].time
-                            + datetime.timedelta(seconds=seconds)
-                        )
-                        self.power_entries.append(0)
-                if diff < 300:
+            if point.time:
+                if i != 0:
+                    last_point = self.points_with_time[i - 1]
+                    if last_point.time:
+                        diff = abs((point.time - last_point.time).seconds)
+                        if 5 < diff < 300:
+                            for seconds in range(
+                                1, abs((point.time - last_point.time).seconds)
+                            ):
+                                self.time_entries.append(
+                                    last_point.time
+                                    + datetime.timedelta(seconds=seconds)
+                                )
+                                self.power_entries.append(0)
+                        if diff < 300:
+                            self.time_entries.append(point.time)
+                            self.power_entries.append(point.extensions_calculated.power)  # type: ignore[attr-defined]
+                else:
                     self.time_entries.append(point.time)
-                    self.power_entries.append(point.extensions_calculated.power)
-            else:
-                self.time_entries.append(point.time)
-                self.power_entries.append(point.extensions_calculated.power)
+                    self.power_entries.append(point.extensions_calculated.power)  # type: ignore[attr-defined]
         self.duration = (self.time_entries[-1] - self.time_entries[0]).seconds
         self.max_period = len(self.time_entries) - 1
         duration_to_add = 18500 - (self.time_entries[-1] - self.time_entries[0]).seconds
         if duration_to_add > 0:
             for seconds in range(1, duration_to_add):
-                self.time_entries.append(
-                    self.points_with_time[-1].time + datetime.timedelta(seconds=seconds)
-                )
+                last_point = self.points_with_time[-1]
+                if last_point.time:
+                    self.time_entries.append(
+                        last_point.time + datetime.timedelta(seconds=seconds)
+                    )
                 self.power_entries.append(0)
 
-    def analyze(self) -> dict:
+    def analyze(self) -> dict[str, int]:
         self.set_time_entries()
         power_per_time_entries = [
             PowerPerTime(10, "10s"),
@@ -83,7 +88,7 @@ class PowerTrackAnalyzer(object):
                     if entry.window == "1min":
                         for i, e in enumerate(self.points_with_time):
                             if i < len(values) - 1:
-                                e.extensions_calculated.power60s = int(values[i])
+                                e.extensions_calculated.power60s = int(values[i])  # type: ignore[attr-defined]
                     if len(values) > 0:
                         self.data[entry.json_key_interval] = int(max(values))
                     else:

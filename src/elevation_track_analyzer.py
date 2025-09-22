@@ -16,7 +16,11 @@ class ElevationTrackAnalyzer(object):
     def set_time_entries(self) -> None:
         for i, e in enumerate(self.points_with_time):
             if e.time:
-                if i != 0 and self.time_entries[-1] and abs((e.time - self.time_entries[-1]).days) > 1:
+                if (
+                    i != 0
+                    and self.time_entries[-1]
+                    and abs((e.time - self.time_entries[-1]).days) > 1
+                ):
                     self.time_entries.append(
                         self.time_entries[-1] + datetime.timedelta(seconds=1)
                     )
@@ -41,21 +45,28 @@ class ElevationTrackAnalyzer(object):
             negative_deltas, velocity_per_time_entries, "-"
         )
 
-        df = DataFrame({"deltas": deltas}, index=to_datetime(
-            [p.extensions_calculated.distance for p in self.points_with_time], unit="s" # type: ignore[attr-defined]
-        ))
+        df = DataFrame(
+            {"deltas": deltas},
+            index=to_datetime(
+                [p.extensions_calculated.distance for p in self.points_with_time],  # type: ignore[attr-defined]
+                unit="s",
+            ),
+        )
         window = 100
         sums = df.rolling(f"{window}s").sum().dropna()
         slopes = sums.loc[(df.index >= to_datetime(window, unit="s"))].values
         if len(slopes) > 0:
             for i, e in enumerate(self.points_with_time):
                 if i < len(slopes) - 1:
-                    e.extensions_calculated.slope = round(float(slopes[i]), 3) # type: ignore[attr-defined]
+                    e.extensions_calculated.slope = round(float(slopes[i]), 3)  # type: ignore[attr-defined]
             self.data[f"slope_{window}"] = round(slopes.max() / window * 100.0, 3)
         return self.data
 
     def set_velocity_per_time_entries(
-        self, positive_deltas: List[float], velocity_per_time_entries: List['VerticalVelocityPerTime'], sign: str
+        self,
+        positive_deltas: List[float],
+        velocity_per_time_entries: List["VerticalVelocityPerTime"],
+        sign: str,
     ) -> None:
         if len(positive_deltas) > 0 and len(positive_deltas) == len(self.time_entries):
             duration = (self.time_entries[-1] - self.time_entries[0]).seconds
@@ -69,15 +80,15 @@ class ElevationTrackAnalyzer(object):
                                 for i, e in enumerate(self.points_with_time):
                                     if (
                                         i < len(values) - 1
-                                        and e.extensions_calculated.verticalVelocity # type: ignore[attr-defined]
+                                        and e.extensions_calculated.verticalVelocity  # type: ignore[attr-defined]
                                         == 0.0
                                     ):
                                         if sign == "+":
-                                            e.extensions_calculated.verticalVelocity = ( # type: ignore[attr-defined]
+                                            e.extensions_calculated.verticalVelocity = (  # type: ignore[attr-defined]
                                                 round(float(values[i]), 3)
                                             )
                                         else:
-                                            e.extensions_calculated.verticalVelocity = ( # type: ignore[attr-defined]
+                                            e.extensions_calculated.verticalVelocity = (  # type: ignore[attr-defined]
                                                 -1 * round(float(values[i]), 3)
                                             )
                             self.data[f"{entry.json_key_interval}_{sign}"] = round(

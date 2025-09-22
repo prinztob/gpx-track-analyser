@@ -2,6 +2,7 @@ import tempfile
 
 import gpxpy
 import yaml
+from gpxpy.gpx import GPX, GPXTrackPoint
 
 from src.Extension import Extension
 from src.gpx_track_analyzer import TrackAnalyzer
@@ -12,7 +13,7 @@ from src.utils import (
 )
 
 
-def test_simplifying_track_gpx():
+def test_simplifying_track_gpx() -> None:
     file = "./resources/track.gpx"
     output_file = tempfile.NamedTemporaryFile(suffix=".gpx")
     gpx_file_simplified = prefix_filename(output_file.name)
@@ -22,7 +23,7 @@ def test_simplifying_track_gpx():
     assert len(get_points(gpx)) == 106
 
 
-def test_analyzing_track_gpx():
+def test_analyzing_track_gpx() -> None:
     file = "./resources/track.gpx"
 
     analyzer = TrackAnalyzer(file)
@@ -64,7 +65,7 @@ def test_analyzing_track_gpx():
     assert open(gpx_file_gpxpy, "r").read() == gpx_file_gpxpy_content
 
 
-def test_analyzing_track2_gpx():
+def test_analyzing_track2_gpx() -> None:
     file = "./resources/track2.gpx"
 
     analyzer = TrackAnalyzer(file)
@@ -76,7 +77,7 @@ def test_analyzing_track2_gpx():
     assert analyzer.duration < 2
 
 
-def test_analyzing_track6_gpx():
+def test_analyzing_track6_gpx() -> None:
     file = "./resources/track6.gpx"
 
     analyzer = TrackAnalyzer(file)
@@ -88,7 +89,7 @@ def test_analyzing_track6_gpx():
     assert analyzer.duration < 4
 
 
-def test_analyzing_track7_gpx():
+def test_analyzing_track7_gpx() -> None:
     file = "./resources/track7.gpx"
 
     analyzer = TrackAnalyzer(file)
@@ -105,7 +106,7 @@ def test_analyzing_track7_gpx():
     assert analyzer.duration < 4
 
 
-def test_analyzing_track3_gpx():
+def test_analyzing_track3_gpx() -> None:
     file = "./resources/track3.gpx"
 
     analyzer = TrackAnalyzer(file)
@@ -130,15 +131,15 @@ def test_analyzing_track3_gpx():
     assert analyzer.data["power_3h"] == 167
     assert analyzer.data["power_4h"] == 156
     assert analyzer.data["power_5h"] == 133
-    assert analyzer.all_points[55].extensions_calculated.power60s == 206
-    assert analyzer.all_points[55].extensions_calculated.power == 236
-    assert analyzer.all_points[55].extensions_calculated.hr == 112
-    assert analyzer.all_points[-1].extensions_calculated.distance == 64797.8203125
+    assert analyzer.all_points[55].extensions_calculated.power60s == 206  # type: ignore[attr-defined]
+    assert analyzer.all_points[55].extensions_calculated.power == 236  # type: ignore[attr-defined]
+    assert analyzer.all_points[55].extensions_calculated.hr == 112  # type: ignore[attr-defined]
+    assert analyzer.all_points[-1].extensions_calculated.distance == 64797.8203125  # type: ignore[attr-defined]
     print(analyzer.duration)
     assert analyzer.duration < 10
 
 
-def test_analyzing_track4_gpx():
+def test_analyzing_track4_gpx() -> None:
     file = "./resources/track4.gpx"
 
     analyzer = TrackAnalyzer(file)
@@ -149,7 +150,7 @@ def test_analyzing_track4_gpx():
     assert "vertical_velocity_3600s_+" not in analyzer.data
 
 
-def test_analyzing_track5_gpx():
+def test_analyzing_track5_gpx() -> None:
     file = "./resources/track5.gpx"
 
     analyzer = TrackAnalyzer(file)
@@ -158,7 +159,7 @@ def test_analyzing_track5_gpx():
     assert analyzer.data["moving_distance"] == 30765.68
 
 
-def test_reduce_track_to_relevant_elevation_points():
+def test_reduce_track_to_relevant_elevation_points() -> None:
     file = "./resources/track3.gpx"
     gpx_file = open(file, "r")
     gpx = gpxpy.parse(gpx_file)
@@ -174,8 +175,8 @@ def test_reduce_track_to_relevant_elevation_points():
     assert abs(loss + 98.2) < 0.1
 
 
-def get_points(gpx):
-    points = []
+def get_points(gpx: GPX) -> list[GPXTrackPoint]:
+    points: list[GPXTrackPoint] = []
     for track in gpx.tracks:
         for segment in track.segments:
             points = points + segment.points

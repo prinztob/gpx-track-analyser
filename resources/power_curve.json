@@ -1,0 +1,96 @@
+{
+  "startDate": null,
+  "endDate": null,
+  "entries": [
+    {
+      "duration": 1,
+      "power": 1592,
+      "activityId": 17664002076,
+      "activityDate": "2024-12-01"
+    },
+    {
+      "duration": 2,
+      "power": 1222,
+      "activityId": 17470701200,
+      "activityDate": "2024-11-06"
+    },
+    {
+      "duration": 5,
+      "power": 1031,
+      "activityId": 17664002076,
+      "activityDate": "2024-12-01"
+    },
+    {
+      "duration": 10,
+      "power": 927,
+      "activityId": 19193108842,
+      "activityDate": "2025-05-21"
+    },
+    {
+      "duration": 20,
+      "power": 795,
+      "activityId": 9886448847,
+      "activityDate": "2022-10-30"
+    },
+    {
+      "duration": 30,
+      "power": 701,
+      "activityId": 10692693705,
+      "activityDate": "2023-03-14"
+    },
+    {
+      "duration": 60,
+      "power": 567,
+      "activityId": 16375522026,
+      "activityDate": "2024-07-12"
+    },
+    {
+      "duration": 120,
+      "power": 397,
+      "activityId": 16375522026,
+      "activityDate": "2024-07-12"
+    },
+    {
+      "duration": 300,
+      "power": 350,
+      "activityId": 19760659060,
+      "activityDate": "2025-07-17"
+    },
+    {
+      "duration": 600,
+      "power": 306,
+      "activityId": 4064909370,
+      "activityDate": "2019-09-16"
+    },
+    {
+      "duration": 1200,
+      "power": 296,
+      "activityId": 4100420116,
+      "activityDate": "2019-09-27"
+    },
+    {
+      "duration": 1800,
+      "power": 280,
+      "activityId": 4064909370,
+      "activityDate": "2019-09-16"
+    },
+    {
+      "duration": 3600,
+      "power": 254,
+      "activityId": 16122648783,
+      "activityDate": "2024-06-27"
+    },
+    {
+      "duration": 7200,
+      "power": 231,
+      "activityId": 7244695168,
+      "activityDate": "2021-08-04"
+    },
+    {
+      "duration": 18000,
+      "power": 165,
+      "activityId": 14322641402,
+      "activityDate": "2024-03-09"
+    }
+  ]
+}

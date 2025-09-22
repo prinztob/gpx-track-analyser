@@ -2,14 +2,14 @@ from src.gpx_track_analyzer import TrackAnalyzer
 from src.velocity_track_analyzer import VelocityTrackAnalyzer, VelocityEntry
 
 
-def test_reading_split_data():
+def test_reading_split_data() -> None:
     file = "resources/splits_1.json"
     analyzer = VelocityTrackAnalyzer([], [file])
     assert len(analyzer.velocity_entries_from_garmin) == 34
     assert VelocityEntry(3359.49, 494.0) == analyzer.velocity_entries_from_garmin[0]
 
 
-def test_max_velocity_in_kilometer_interval_splits_1():
+def test_max_velocity_in_kilometer_interval_splits_1() -> None:
     file = "resources/splits_1.json"
     analyzer = VelocityTrackAnalyzer([], [file])
     assert round(analyzer.get_average_velocity_for_kilometers(5), 2) == 31.37
@@ -18,7 +18,7 @@ def test_max_velocity_in_kilometer_interval_splits_1():
     assert round(analyzer.get_average_velocity_for_kilometers(20), 2) == 0.0
 
 
-def test_max_velocity_in_kilometer_interval_merge_splits():
+def test_max_velocity_in_kilometer_interval_merge_splits() -> None:
     analyzer = VelocityTrackAnalyzer(
         [],
         [
@@ -36,7 +36,7 @@ def test_max_velocity_in_kilometer_interval_merge_splits():
     assert round(analyzer.get_average_velocity_for_kilometers(75), 2) == 0.0
 
 
-def test_max_velocity_in_kilometer_interval_gpx_and_splits():
+def test_max_velocity_in_kilometer_interval_gpx_and_splits() -> None:
     track_analyzer = TrackAnalyzer("resources/activity_with_splits.gpx")
     track_analyzer.analyze()
     assert round(track_analyzer.data["avg_velocity_1km"], 2) == 31.3
