@@ -100,9 +100,7 @@ class TrackAnalyzer(object):
                 return False
             print(f"PowerTrackAnalyzer failed with {err}")
         try:
-            self.data.update(
-                VelocityTrackAnalyzer(points, self.split_files).analyze()
-            )
+            self.data.update(VelocityTrackAnalyzer(points, self.split_files).analyze())
         except Exception as err:
             if err.args[0] == "index values must be monotonic":
                 return False

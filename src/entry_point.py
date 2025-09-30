@@ -351,14 +351,18 @@ def download_activities_by_date(
             else:
                 activity["childIds"] = []
             start_time_local = activity["startTimeLocal"].split(" ")
-            if (
-                start_time_local
-                and len(start_time_local) == 2
-                and "vo2MaxPreciseValue" not in activity
-            ):
-                activity["vo2MaxPreciseValue"] = get_precise_vo2max(
-                    api, start_time_local[0], activity
-                )
+            if start_time_local and len(start_time_local) == 2:
+                if "vo2MaxPreciseValue" not in activity:
+                    activity["vo2MaxPreciseValue"] = get_precise_vo2max(
+                        api, start_time_local[0], activity
+                    )
+                if is_cycling(activity) and "functionalThresholdPower" not in activity:
+                    ftp = get_functional_threshold_power_for_cycling(
+                        api, start_time_local[0]
+                    )
+                    if ftp != "0":
+                        activity["functionalThresholdPower"] = ftp
+
             output_file = f"{folder}/activity_{str(activity_id)}.json"
             with open(output_file, "w+") as fb:
                 json.dump(activity, fb)
@@ -396,6 +400,23 @@ def get_precise_vo2max(
             vo2_max_precise_value = str(data["generic"]["vo2MaxPreciseValue"])
             print(f"Found vo2MaxPreciseValue {vo2_max_precise_value}.")
             return vo2_max_precise_value
+    return "0"
+
+
+def get_functional_threshold_power_for_cycling(api: Garmin, selected_date: str) -> str:
+    url = f"biometric-service/biometric/powerToWeight/latest/{selected_date}"
+    data = api.connectapi(url)
+    if len(data) > 0 and isinstance(data, list):
+        ftps = [
+            entry["functionalThresholdPower"]
+            for entry in data
+            if "sport" in entry
+            and entry["sport"] == "CYCLING"
+            and entry["ftpCreateTime"].startswith(selected_date)
+        ]
+        if len(ftps) > 0:
+            print(f"Found FTP {ftps[0]}.")
+            return str(ftps[0])
     return "0"
 
 
