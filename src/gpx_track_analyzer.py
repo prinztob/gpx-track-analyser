@@ -88,11 +88,14 @@ class TrackAnalyzer(object):
         self.set_all_points_with_distance(track_is_non_monotonic)
         self.calculate_data_with_gpxpy()
         points = [e for e in self.all_points if e.time]
-        self.data.update(
-            ElevationTrackAnalyzer(
-                [point for point in points if point.elevation]
-            ).analyze()
-        )
+        try:
+            self.data.update(
+                ElevationTrackAnalyzer(
+                    [point for point in points if point.elevation]
+                ).analyze()
+            )
+        except Exception as err:
+            print(f"ElevationTrackAnalyzer failed with {err}")
         try:
             self.data.update(PowerTrackAnalyzer(points).analyze())
         except Exception as err:

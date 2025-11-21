@@ -310,11 +310,15 @@ def get_vo2max(api: Garmin, selected_date: str) -> str:
     Get vo2Max
     """
     try:
-        return get_precise_vo2max(
-            api,
-            selected_date,
-            get_activities_by_date(api, selected_date, selected_date, None)[0],
-        )
+        activities = get_activities_by_date(api, selected_date, selected_date, None)
+        if len(activities) > 0:
+            return get_precise_vo2max(
+                api,
+                selected_date,
+                activities[0],
+            )
+        else:
+            return "0"
     except (
         GarminConnectConnectionError,
         GarminConnectAuthenticationError,
@@ -385,20 +389,17 @@ def download_activities_by_date(
 def get_precise_vo2max(
     api: Garmin, selected_date: str, activity: dict[str, Any]
 ) -> str:
-    url = f"/metrics-service/metrics/maxmet/latest/{selected_date}"
-    data = api.connectapi(url)
-    if len(data) > 0:
-        if (
-            is_cycling(activity)
-            and data["cycling"]
-            and "vo2MaxPreciseValue" in data["cycling"]
-        ):
-            vo2_max_precise_value = str(data["cycling"]["vo2MaxPreciseValue"])
-            print(f"Found vo2MaxPreciseValue {vo2_max_precise_value}.")
+    url = f"/metrics-service/metrics/maxmet/daily/{selected_date}/{selected_date}"
+    respnse = api.connectapi(url)
+    if len(respnse) > 0:
+        data = respnse[0]
+        if is_cycling(activity) and data["cycling"] and "vo2MaxPreciseValue" in data["cycling"]:
+            vo2_max_precise_value = data["cycling"]["vo2MaxPreciseValue"]
+            print(f"Found cycling vo2MaxPreciseValue {vo2_max_precise_value}.")
             return vo2_max_precise_value
         elif data["generic"] and "vo2MaxPreciseValue" in data["generic"]:
-            vo2_max_precise_value = str(data["generic"]["vo2MaxPreciseValue"])
-            print(f"Found vo2MaxPreciseValue {vo2_max_precise_value}.")
+            vo2_max_precise_value = data["generic"]["vo2MaxPreciseValue"]
+            print(f"Found generic vo2MaxPreciseValue {vo2_max_precise_value}.")
             return vo2_max_precise_value
     return "0"
 
