@@ -1,11 +1,13 @@
 import json
 import os
+import tempfile
 from datetime import datetime
 from typing import Any, cast
 
 import garth
 import lxml.etree as mod_etree
 import requests
+import yaml
 from garminconnect import (  # type: ignore[import-untyped]
     Garmin,
     GarminConnectConnectionError,
@@ -16,6 +18,7 @@ from garth.exc import GarthHTTPError
 from gpxpy.gpx import GPX, GPXTrackPoint
 
 from src.tcx_to_gpx import convert_tcx_to_gpx
+from . import utils
 from .Extension import Extension
 from .gpx_track_analyzer import TrackAnalyzer
 
@@ -179,32 +182,6 @@ def get_hrv(api: Garmin, selected_date: str) -> dict[str, Any] | str:
         )
 
 
-def get_activity_json_for_date(client: Garmin, selected_date: str) -> str:
-    try:
-        activities = get_activities_by_date(client, selected_date, selected_date, None)
-        for activity in activities:
-            if "vo2MaxPreciseValue" not in activity:
-                activity["vo2MaxPreciseValue"] = get_precise_vo2max(
-                    client, selected_date, activity
-                )
-        return json.dumps(activities)
-    except (
-        GarminConnectConnectionError,
-        GarminConnectAuthenticationError,
-        GarminConnectTooManyRequestsError,
-    ) as err:
-        return (
-            f"return code: 1Error occurred during Garmin Connect Client get activity json for date "
-            f"{selected_date}: {err}"
-        )
-    except Exception as err:
-        return (
-            f"return code: 1Unknown error occurred during Garmin Connect Client get activity json for date "
-            f"{selected_date}: "
-            f"{err}"
-        )
-
-
 def is_cycling(activity: dict[str, Any]) -> bool:
     return (
         activity["activityType"]["typeId"] in cycling_ids
@@ -223,6 +200,39 @@ def download_tcx(
         with open(output_file_tcx, "wb") as fb:
             fb.write(gpx_data)
         convert_tcx_to_gpx(output_file_tcx, output_file_gpx)
+        return "return code: 0"
+    except (
+        GarminConnectConnectionError,
+        GarminConnectAuthenticationError,
+        GarminConnectTooManyRequestsError,
+    ) as err:
+        return f"return code: 1Error occurred during Garmin Connect Client download tcx for id {activity_id}: {err}"
+    except Exception as err:
+        return (
+            f"return code: 1Unknown error occurred during Garmin Connect Client download tcx for id {activity_id}: "
+            f"{err}"
+        )
+
+
+def download_gpx_and_transfer_tcx_to_extension(
+    api: Garmin,
+    activity_id: str,
+    output_file_path_gpx: str,
+    out_file_path_yaml: str,
+    output_file_path_tcx: str = tempfile.NamedTemporaryFile().name,
+) -> str:
+    try:
+        tcx_data = api.download_activity(
+            activity_id, dl_fmt=Garmin.ActivityDownloadFormat.TCX
+        )
+
+        with open(output_file_path_tcx, "wb") as fb:
+            fb.write(tcx_data)
+        convert_tcx_to_gpx(
+            output_file_path_tcx,
+            output_file_path_gpx,
+            yaml_extension_file_path=out_file_path_yaml,
+        )
         return "return code: 0"
     except (
         GarminConnectConnectionError,
@@ -390,17 +400,21 @@ def get_precise_vo2max(
     api: Garmin, selected_date: str, activity: dict[str, Any]
 ) -> str:
     url = f"/metrics-service/metrics/maxmet/daily/{selected_date}/{selected_date}"
-    respnse = api.connectapi(url)
-    if len(respnse) > 0:
-        data = respnse[0]
-        if is_cycling(activity) and data["cycling"] and "vo2MaxPreciseValue" in data["cycling"]:
+    response = api.connectapi(url)
+    if len(response) > 0:
+        data = response[0]
+        if (
+            is_cycling(activity)
+            and data["cycling"]
+            and "vo2MaxPreciseValue" in data["cycling"]
+        ):
             vo2_max_precise_value = data["cycling"]["vo2MaxPreciseValue"]
             print(f"Found cycling vo2MaxPreciseValue {vo2_max_precise_value}.")
-            return vo2_max_precise_value
+            return str(vo2_max_precise_value)
         elif data["generic"] and "vo2MaxPreciseValue" in data["generic"]:
             vo2_max_precise_value = data["generic"]["vo2MaxPreciseValue"]
             print(f"Found generic vo2MaxPreciseValue {vo2_max_precise_value}.")
-            return vo2_max_precise_value
+            return str(vo2_max_precise_value)
     return "0"
 
 
@@ -469,19 +483,21 @@ def get_power_element_at(entries: list[dict[str, str]], index: int) -> str:
 def analyze_gpx_track(
     gpx_path: str, additional_data_folder: str, split_files: list[str]
 ) -> str:
-    try:
-        start_time = datetime.now()
+    #    try:
+    start_time = datetime.now()
+    analyzer = TrackAnalyzer(gpx_path, additional_data_folder, split_files)
+    if not analyzer.analyze():
         analyzer = TrackAnalyzer(gpx_path, additional_data_folder, split_files)
-        if not analyzer.analyze():
-            analyzer = TrackAnalyzer(gpx_path, additional_data_folder, split_files)
-            analyzer.analyze(True)
-        analyzer.write_data_and_extension_to_file()
-        print(
-            f"Analyzing of {gpx_path} took {(datetime.now() - start_time).total_seconds()}"
-        )
-        return "return code: 0"
-    except Exception as err:  # pylint: disable=broad-except
-        return f"return code: 1Unknown error occurred {err}"
+        analyzer.analyze(True)
+    analyzer.write_data_and_extension_to_file()
+    print(
+        f"Analyzing of {gpx_path} took {(datetime.now() - start_time).total_seconds()}"
+    )
+    return "return code: 0"
+
+
+#    except Exception as err:  # pylint: disable=broad-except
+#        return f"return code: 1Unknown error occurred {err}"
 
 
 def simplify_gpx_track(gpx_path: str, additional_data_folder: str) -> str:
@@ -497,61 +513,74 @@ def simplify_gpx_track(gpx_path: str, additional_data_folder: str) -> str:
         return f"return code: 1Unknown error occurred {err}"
 
 
-def merge_tracks(gpx_track_files_to_merge: Any, output_file: str, name: str) -> str:
-    try:
-        print(f"Trying to merge the following tracks: {gpx_track_files_to_merge}")
-        files = list(gpx_track_files_to_merge)
-        analyzer_for_all_tracks: TrackAnalyzer | None = None
-        gpx_track_analyzers = []
-        for file in files:
-            analyzer = TrackAnalyzer(file)
-            analyzer.parse_track()
-            gpx_track_analyzers.append(analyzer)
+def merge_tracks(
+    gpx_track_files_to_merge: Any,
+    output_file: str,
+    name: str,
+    extensions_folder: str | None = None,
+) -> str:
+    #    try:
+    print(f"Trying to merge the following tracks: {gpx_track_files_to_merge}")
+    files = list(gpx_track_files_to_merge)
+    analyzer_for_all_tracks: TrackAnalyzer | None = None
+    gpx_track_analyzers = []
+    for file in files:
+        analyzer = TrackAnalyzer(file, yaml_file_folder=extensions_folder)
+        analyzer.parse_track_and_extension()
+        gpx_track_analyzers.append(analyzer)
 
-        for analyzer in sorted(gpx_track_analyzers, key=lambda a: get_time(a.gpx)):
-            if analyzer_for_all_tracks is None:
-                analyzer_for_all_tracks = analyzer
-            else:
-                if analyzer_for_all_tracks.gpx is not None and analyzer.gpx is not None:
-                    update_distance(analyzer_for_all_tracks.gpx, analyzer.gpx)
-                    analyzer_for_all_tracks.gpx.tracks.extend(analyzer.gpx.tracks)
-        if (
-            analyzer_for_all_tracks is not None
-            and analyzer_for_all_tracks.gpx is not None
+    for analyzer in sorted(gpx_track_analyzers, key=lambda a: get_time(a.gpx)):
+        if analyzer_for_all_tracks is None:
+            analyzer_for_all_tracks = analyzer
+        else:
+            if analyzer_for_all_tracks.gpx is not None and analyzer.gpx is not None:
+                update_distance(
+                    analyzer_for_all_tracks.extension_points, analyzer.extension_points
+                )
+                analyzer_for_all_tracks.gpx.tracks.extend(analyzer.gpx.tracks)
+                analyzer_for_all_tracks.extension_points.extend(
+                    analyzer.extension_points
+                )
+    if analyzer_for_all_tracks is not None and analyzer_for_all_tracks.gpx is not None:
+        if utils.get_number_of_track_points(analyzer_for_all_tracks.gpx) != len(
+            analyzer_for_all_tracks.extension_points
         ):
-            analyzer_for_all_tracks.gpx.name = name
-            with open(output_file, "w") as f:
-                f.write(analyzer_for_all_tracks.gpx.to_xml())
-        print(f"Wrote file {output_file}")
-        return "return code: 0Merging of tracks successful"
-    except Exception as err:
-        return "return code: 1Unknown error occurred during merging of tracks: %s" % err
+            raise Exception("Extension points do not match gpx tracks")
+        analyzer_for_all_tracks.gpx.name = name
+        with open(output_file, "w") as f:
+            f.write(analyzer_for_all_tracks.gpx.to_xml())
+        output_file_yaml = os.path.join(
+            extensions_folder if extensions_folder else os.path.dirname(output_file),
+            os.path.basename(output_file.replace(".gpx", "_extensions.yaml")),
+        )
+        with open(output_file_yaml, "w") as f:
+            yaml.dump(
+                {
+                    "extensions": [
+                        e.to_dict() for e in analyzer_for_all_tracks.extension_points
+                    ]
+                },
+                f,
+                default_flow_style=False,
+            )
+    print(f"Wrote file {output_file}")
+    return "return code: 0Merging of tracks successful"
+
+
+#    except Exception as err:
+#        return "return code: 1Unknown error occurred during merging of tracks: %s" % err
 
 
 def update_distance(
-    gpx_with_correct_distances: GPX, gpx_track_to_be_updated: GPX
+    extension_points_correct_distances: list[Extension],
+    extension_points_to_be_updated: list[Extension],
 ) -> None:
-    last_point_first_track = Extension.parse(
-        gpx_with_correct_distances.tracks[-1].segments[-1].points[-1].extensions
-    )
-    last_point_last_track = Extension.parse(
-        gpx_track_to_be_updated.tracks[0].segments[0].points[0].extensions
-    )
+    last_point_first_track = extension_points_correct_distances[-1]
+    last_point_last_track = extension_points_to_be_updated[0]
     delta_last_track = last_point_last_track.distance
     delta_first_track = last_point_first_track.distance - delta_last_track
-    for track in gpx_track_to_be_updated.tracks:
-        for segment in track.segments:
-            points = []
-            for point in segment.points:
-                point.extensions_calculated = Extension.parse(point.extensions)  # type: ignore[attr-defined]
-                set_tag_in_extensions(
-                    gpx_track_to_be_updated,
-                    delta_first_track + point.extensions_calculated.distance,  # type: ignore[attr-defined]
-                    point,
-                    "distance",
-                )
-                points.append(point)
-            segment.points = points
+    for point in extension_points_to_be_updated:
+        point.distance = delta_first_track + point.distance
 
 
 def set_tag_in_extensions(

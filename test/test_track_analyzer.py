@@ -27,9 +27,8 @@ def test_analyzing_track_gpx() -> None:
     file = "./resources/track.gpx"
 
     analyzer = TrackAnalyzer(file)
-    gpx = gpxpy.parse(open(file, "r"))
-    assert len(gpx.tracks[0].segments[0].points[0].extensions) == 0
     analyzer.analyze()
+    assert len(analyzer.gpx.tracks[0].segments[0].points[0].extensions) == 0
     output_file = tempfile.NamedTemporaryFile(suffix=".gpx")
     output_file_yaml = tempfile.NamedTemporaryFile(suffix=".yaml")
     gpx_file_gpxpy = output_file.name.replace(".gpx", "_gpxpy.json")
@@ -38,7 +37,7 @@ def test_analyzing_track_gpx() -> None:
     extension_points = [Extension.parse_from_yaml(e) for e in extensions["extensions"]]
     assert len(get_points(gpx)) == 5683
     assert extension_points[66].distance > 0.0
-    assert extension_points[66].verticalVelocity > 0.0
+    assert extension_points[66].vertical_velocity > 0.0
     assert extension_points[66].slope > 0.0
 
     gpx_file_gpxpy_content = """{
