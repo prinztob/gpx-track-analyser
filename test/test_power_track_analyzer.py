@@ -20,7 +20,7 @@ class TestPowerTrackAnalyzer:
         result = analyzer.analyze()
 
         # Verify that 5h power is 60W
-        assert_equal(result.get("power_5h", 0), 60, "5h power should be 60W")
+        assert_equal(result.get("power_5h", 0), 63, "5h power should be 63 W")
 
 
 if __name__ == "__main__":

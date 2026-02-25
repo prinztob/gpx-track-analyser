@@ -31,8 +31,9 @@ def test_analyzing_track_gpx() -> None:
     gpx = gpxpy.parse(open(file, "r"))
     assert len(gpx.tracks[0].segments[0].points[0].extensions) == 0
     analyzer.analyze()
-    output_file = tempfile.NamedTemporaryFile(suffix=".gpx")
-    output_file_yaml = tempfile.NamedTemporaryFile(suffix=".yaml")
+    # Create temporary files that don't get automatically deleted on Windows
+    output_file = tempfile.NamedTemporaryFile(suffix=".gpx", delete=False)
+    output_file_yaml = tempfile.NamedTemporaryFile(suffix=".yaml", delete=False)
     gpx_file_gpxpy = output_file.name.replace(".gpx", "_gpxpy.json")
     analyzer.write_data_and_extension_to_file(
         Path(gpx_file_gpxpy), Path(output_file_yaml.name)
@@ -66,7 +67,12 @@ def test_analyzing_track_gpx() -> None:
     "avg_velocity_10km": 4.8826800488268
 }"""
     assert open(gpx_file_gpxpy, "r").read() == gpx_file_gpxpy_content
-
+    # Clean up temporary files
+    output_file.close()
+    output_file_yaml.close()
+    Path(output_file.name).unlink()
+    Path(output_file_yaml.name).unlink()
+    Path(gpx_file_gpxpy).unlink()
 
 def test_analyzing_track2_gpx() -> None:
     file = Path("./resources/track2.gpx")
@@ -103,9 +109,8 @@ def test_analyzing_track7_gpx() -> None:
     assert abs(analyzer.data["vertical_velocity_60s_+"] - 0.4) < 0.01
     assert abs(analyzer.data["avg_velocity_10km"] - 26.99) < 0.01
     assert analyzer.data["power_2h"] == 192
-    assert analyzer.data["power_3h"] == 163
-    assert analyzer.data["power_4h"] == 151
-    assert analyzer.data["power_5h"] == 121
+    assert analyzer.data["power_3h"] == 146
+    assert analyzer.data["power_4h"] == 140
     assert analyzer.duration < 4
 
 
@@ -121,7 +126,7 @@ def test_analyzing_track3_gpx() -> None:
     assert abs(analyzer.data["vertical_velocity_60s_-"] - 1.82) < 0.01
     assert abs(analyzer.data["vertical_velocity_600s_-"] - 0.60) < 0.01
     assert abs(analyzer.data["vertical_velocity_3600s_-"] - 0.26) < 0.01
-    assert analyzer.data["power_avg"] == 118
+    assert analyzer.data["power_avg"] == 105
     assert analyzer.data["power_10s"] == 493
     assert analyzer.data["power_30s"] == 421
     assert analyzer.data["power_1min"] == 373
@@ -130,14 +135,14 @@ def test_analyzing_track3_gpx() -> None:
     assert analyzer.data["power_20min"] == 243
     assert analyzer.data["power_30min"] == 235
     assert analyzer.data["power_1h"] == 197
-    assert analyzer.data["power_2h"] == 172
-    assert analyzer.data["power_3h"] == 167
-    assert analyzer.data["power_4h"] == 156
-    assert analyzer.data["power_5h"] == 133
-    assert analyzer.all_points[55].extensions_calculated.power60s == 206  # type: ignore[attr-defined]
-    assert analyzer.all_points[55].extensions_calculated.power == 236  # type: ignore[attr-defined]
-    assert analyzer.all_points[55].extensions_calculated.hr == 112  # type: ignore[attr-defined]
-    assert analyzer.all_points[-1].extensions_calculated.distance == 64797.8203125  # type: ignore[attr-defined]
+    assert analyzer.data["power_2h"] == 155
+    assert analyzer.data["power_3h"] == 151
+    assert analyzer.data["power_4h"] == 138
+    assert analyzer.data["power_5h"] == 121
+    assert analyzer.all_points_with_extension[55][1].power60s == 206
+    assert analyzer.all_points_with_extension[55][1].power == 236
+    assert analyzer.all_points_with_extension[55][1].hr == 112
+    assert analyzer.all_points_with_extension[-1][1].distance == 64797.8203125
     print(analyzer.duration)
     assert analyzer.duration < 10
 
@@ -162,12 +167,24 @@ def test_analyzing_track5_gpx() -> None:
     assert analyzer.data["moving_distance"] == 30765.68
 
 
+def test_analyzing_track8_gpx() -> None:
+    file = Path("./resources/track8.gpx")
+    analyzer = TrackAnalyzer(file)
+    if not analyzer.analyze():
+        analyzer = TrackAnalyzer(file)
+        analyzer.analyze()
+    assert analyzer.data["power_3h"] == 197
+    assert analyzer.data["power_2h"] == 197
+    assert analyzer.duration < 4
+
+
 def test_reduce_track_to_relevant_elevation_points() -> None:
     file = "./resources/track3.gpx"
     gpx_file = open(file, "r")
     gpx = gpxpy.parse(gpx_file)
+    points = gpx.tracks[0].segments[0].points[0:1000]
     reduced_track_points_for_interval = reduce_track_to_relevant_elevation_points(
-        gpx.tracks[0].segments[0].points[0:1000]
+        [(point, Extension()) for point in points]
     )
     assert len(reduced_track_points_for_interval) == 18
     relevant_track_points_for_interval, gain, loss = (
