@@ -1,4 +1,5 @@
 import tempfile
+from pathlib import Path
 
 import gpxpy
 import yaml
@@ -14,9 +15,9 @@ from src.utils import (
 
 
 def test_simplifying_track_gpx() -> None:
-    file = "./resources/track.gpx"
+    file = Path("./resources/track.gpx")
     output_file = tempfile.NamedTemporaryFile(suffix=".gpx")
-    gpx_file_simplified = prefix_filename(output_file.name)
+    gpx_file_simplified = Path(prefix_filename(output_file.name))
     analyzer = TrackAnalyzer(file)
     analyzer.write_simplified_track_to_file(gpx_file_simplified)
     gpx = gpxpy.parse(open(gpx_file_simplified, "r"))
@@ -24,7 +25,7 @@ def test_simplifying_track_gpx() -> None:
 
 
 def test_analyzing_track_gpx() -> None:
-    file = "./resources/track.gpx"
+    file = Path("./resources/track.gpx")
 
     analyzer = TrackAnalyzer(file)
     gpx = gpxpy.parse(open(file, "r"))
@@ -33,12 +34,14 @@ def test_analyzing_track_gpx() -> None:
     output_file = tempfile.NamedTemporaryFile(suffix=".gpx")
     output_file_yaml = tempfile.NamedTemporaryFile(suffix=".yaml")
     gpx_file_gpxpy = output_file.name.replace(".gpx", "_gpxpy.json")
-    analyzer.write_data_and_extension_to_file(gpx_file_gpxpy, output_file_yaml.name)
+    analyzer.write_data_and_extension_to_file(
+        Path(gpx_file_gpxpy), Path(output_file_yaml.name)
+    )
     extensions = yaml.safe_load(open(output_file_yaml.name, "r"))
     extension_points = [Extension.parse_from_yaml(e) for e in extensions["extensions"]]
     assert len(get_points(gpx)) == 5683
     assert extension_points[66].distance > 0.0
-    assert extension_points[66].verticalVelocity > 0.0
+    assert extension_points[66].vertical_velocity > 0.0
     assert extension_points[66].slope > 0.0
 
     gpx_file_gpxpy_content = """{
@@ -66,7 +69,7 @@ def test_analyzing_track_gpx() -> None:
 
 
 def test_analyzing_track2_gpx() -> None:
-    file = "./resources/track2.gpx"
+    file = Path("./resources/track2.gpx")
 
     analyzer = TrackAnalyzer(file)
     analyzer.analyze()
@@ -78,7 +81,7 @@ def test_analyzing_track2_gpx() -> None:
 
 
 def test_analyzing_track6_gpx() -> None:
-    file = "./resources/track6.gpx"
+    file = Path("./resources/track6.gpx")
 
     analyzer = TrackAnalyzer(file)
     analyzer.analyze()
@@ -90,12 +93,12 @@ def test_analyzing_track6_gpx() -> None:
 
 
 def test_analyzing_track7_gpx() -> None:
-    file = "./resources/track7.gpx"
+    file = Path("./resources/track7.gpx")
 
     analyzer = TrackAnalyzer(file)
     if not analyzer.analyze():
         analyzer = TrackAnalyzer(file)
-        analyzer.analyze(True)
+        analyzer.analyze()
     assert abs(analyzer.data["slope_100"] - 17.88) < 0.01
     assert abs(analyzer.data["vertical_velocity_60s_+"] - 0.4) < 0.01
     assert abs(analyzer.data["avg_velocity_10km"] - 26.99) < 0.01
@@ -107,7 +110,7 @@ def test_analyzing_track7_gpx() -> None:
 
 
 def test_analyzing_track3_gpx() -> None:
-    file = "./resources/track3.gpx"
+    file = Path("./resources/track3.gpx")
 
     analyzer = TrackAnalyzer(file)
     analyzer.analyze()
@@ -140,7 +143,7 @@ def test_analyzing_track3_gpx() -> None:
 
 
 def test_analyzing_track4_gpx() -> None:
-    file = "./resources/track4.gpx"
+    file = Path("./resources/track4.gpx")
 
     analyzer = TrackAnalyzer(file)
     analyzer.analyze()
@@ -151,10 +154,10 @@ def test_analyzing_track4_gpx() -> None:
 
 
 def test_analyzing_track5_gpx() -> None:
-    file = "./resources/track5.gpx"
+    file = Path("./resources/track5.gpx")
 
     analyzer = TrackAnalyzer(file)
-    analyzer.set_all_points_with_distance(False)
+    analyzer.set_all_points_with_distance()
     analyzer.calculate_data_with_gpxpy()
     assert analyzer.data["moving_distance"] == 30765.68
 

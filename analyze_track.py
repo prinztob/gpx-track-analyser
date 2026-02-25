@@ -17,7 +17,7 @@ def main() -> int:
     analyzer = TrackAnalyzer(args.input_file)
     if not analyzer.analyze():
         analyzer = TrackAnalyzer(args.input_file)
-        analyzer.analyze(True)
+        analyzer.analyze()
     analyzer.write_data_and_extension_to_file(args.output_file)
     return 0
 

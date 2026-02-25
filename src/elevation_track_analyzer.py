@@ -1,31 +1,32 @@
 import datetime
-from typing import List
+from typing import List, Tuple
 
 from gpxpy.gpx import GPXTrackPoint
 from pandas import DataFrame, to_datetime
 
+from src.Extension import Extension
 from src.utils import get_cleaned_track_elevation
 
 
 class ElevationTrackAnalyzer(object):
-    def __init__(self, points_with_time: List[GPXTrackPoint]):
+    def __init__(self, points_with_time: List[Tuple[GPXTrackPoint, Extension]]):
         self.points_with_time = points_with_time
         self.time_entries: List[datetime.datetime] = []
         self.data: dict[str, int] = {}
 
     def set_time_entries(self) -> None:
         for i, e in enumerate(self.points_with_time):
-            if e.time:
+            if e[0].time:
                 if (
                     i != 0
                     and self.time_entries[-1]
-                    and abs((e.time - self.time_entries[-1]).days) > 1
+                    and abs((e[0].time - self.time_entries[-1]).days) > 1
                 ):
                     self.time_entries.append(
                         self.time_entries[-1] + datetime.timedelta(seconds=1)
                     )
                 else:
-                    self.time_entries.append(e.time)
+                    self.time_entries.append(e[0].time)
 
     def analyze(self) -> dict[str, int]:
         self.set_time_entries()
@@ -48,7 +49,7 @@ class ElevationTrackAnalyzer(object):
         df = DataFrame(
             {"deltas": deltas},
             index=to_datetime(
-                [p.extensions_calculated.distance for p in self.points_with_time],  # type: ignore[attr-defined]
+                [p[1].distance for p in self.points_with_time],
                 unit="s",
             ),
         )
@@ -58,7 +59,7 @@ class ElevationTrackAnalyzer(object):
         if len(slopes) > 0:
             for i, e in enumerate(self.points_with_time):
                 if i < len(slopes) - 1:
-                    e.extensions_calculated.slope = round(float(slopes[i]), 3)  # type: ignore[attr-defined]
+                    e[1].slope = round(float(slopes[i]), 3)
             self.data[f"slope_{window}"] = round(slopes.max() / window * 100.0, 3)
         return self.data
 
@@ -80,16 +81,15 @@ class ElevationTrackAnalyzer(object):
                                 for i, e in enumerate(self.points_with_time):
                                     if (
                                         i < len(values) - 1
-                                        and e.extensions_calculated.verticalVelocity  # type: ignore[attr-defined]
-                                        == 0.0
+                                        and e[1].vertical_velocity == 0.0
                                     ):
                                         if sign == "+":
-                                            e.extensions_calculated.verticalVelocity = (  # type: ignore[attr-defined]
-                                                round(float(values[i]), 3)
+                                            e[1].vertical_velocity = round(
+                                                float(values[i]), 3
                                             )
                                         else:
-                                            e.extensions_calculated.verticalVelocity = (  # type: ignore[attr-defined]
-                                                -1 * round(float(values[i]), 3)
+                                            e[1].vertical_velocity = -1 * round(
+                                                float(values[i]), 3
                                             )
                             self.data[f"{entry.json_key_interval}_{sign}"] = round(
                                 (max(values / entry.time_interval))[0], 3

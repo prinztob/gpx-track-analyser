@@ -12,7 +12,7 @@ class Extension:
     speed: float = 0.0
     hr: int = 0
     slope: float = 0.0
-    verticalVelocity: float = 0.0
+    vertical_velocity: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         values = {"distance": round(self.distance, 1)}
@@ -28,8 +28,8 @@ class Extension:
             values["hr"] = self.hr
         if self.slope != 0.0:
             values["slope"] = self.slope
-        if self.verticalVelocity != 0.0:
-            values["verticalVelocity"] = self.verticalVelocity
+        if self.vertical_velocity != 0.0:
+            values["verticalVelocity"] = self.vertical_velocity
         return values
 
     @staticmethod
@@ -55,7 +55,7 @@ class Extension:
                         elif "slope" in el.tag:
                             extension.slope = float(el.text)
                         elif "vvelocity" in el.tag or "verticalVelocity" in el.tag:
-                            extension.verticalVelocity = float(el.text)
+                            extension.vertical_velocity = float(el.text)
                 except Exception:
                     failed_count += 1
         return extension
@@ -81,7 +81,7 @@ class Extension:
                 elif "slope" == k:
                     extension.slope = v
                 elif "vvelocity" == k or "verticalVelocity" == k:
-                    extension.verticalVelocity = v
+                    extension.vertical_velocity = v
             except Exception:
                 failed_count += 1
         return extension
