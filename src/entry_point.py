@@ -18,6 +18,7 @@ from garminconnect import (  # type: ignore[import-untyped]
 from garth.exc import GarthHTTPError
 from gpxpy.gpx import GPX, GPXTrackPoint
 
+from heatmap_generator import generate_heatmap
 from src.utils import (
     get_number_of_track_points,
     parse_track,
@@ -602,6 +603,20 @@ def merge_tracks(
         return "return code: 0Merging of tracks successful"
     except Exception as err:
         return "return code: 1Unknown error occurred during merging of tracks: %s" % err
+
+
+def generate_heatmap_from_tracks(
+    input_gpx_track_files: list[str],
+    output_mbtiles_file: str,
+) -> str:
+    try:
+        generate_heatmap(
+            [Path(track) for track in input_gpx_track_files],
+            Path(output_mbtiles_file),
+        )
+        return "return code: 0Generate heatmap was successful"
+    except Exception as err:
+        return "return code: 1Unknown error occurred during heatmap creation: %s" % err
 
 
 def remove_extensions_from_gpx_track(

@@ -97,12 +97,16 @@ class TrackAnalyzer(object):
             self.data.update(
                 ElevationTrackAnalyzer(points_with_time_and_elevation).analyze()
             )
-            print(f"ElevationTrackAnalyzer successful with {len(points_with_time)} points: {self.data}")
+            print(
+                f"ElevationTrackAnalyzer successful with {len(points_with_time)} points: {self.data}"
+            )
         except Exception as err:
             print(f"ElevationTrackAnalyzer failed with {err}")
         try:
             self.data.update(PowerTrackAnalyzer(points_with_time).analyze())
-            print(f"PowerTrackAnalyzer successful with {len(points_with_time)} points: {self.data}")
+            print(
+                f"PowerTrackAnalyzer successful with {len(points_with_time)} points: {self.data}"
+            )
         except Exception as err:
             if err.args[0] == "index values must be monotonic":
                 return False
@@ -111,7 +115,9 @@ class TrackAnalyzer(object):
             self.data.update(
                 VelocityTrackAnalyzer(points_with_time, self.split_files).analyze()
             )
-            print(f"VelocityTrackAnalyzer successful with {len(points_with_time)} points: {self.data}")
+            print(
+                f"VelocityTrackAnalyzer successful with {len(points_with_time)} points: {self.data}"
+            )
         except Exception as err:
             if err.args[0] == "index values must be monotonic":
                 return False

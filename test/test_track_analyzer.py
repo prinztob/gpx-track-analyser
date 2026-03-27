@@ -74,6 +74,7 @@ def test_analyzing_track_gpx() -> None:
     Path(output_file_yaml.name).unlink()
     Path(gpx_file_gpxpy).unlink()
 
+
 def test_analyzing_track2_gpx() -> None:
     file = Path("./resources/track2.gpx")
 
