@@ -18,15 +18,16 @@ from garminconnect import (  # type: ignore[import-untyped]
 from garth.exc import GarthHTTPError
 from gpxpy.gpx import GPX, GPXTrackPoint
 
-from heatmap_generator import generate_heatmap
+from src.heatmap_generator import generate_heatmap
 from src.utils import (
     get_number_of_track_points,
     parse_track,
     get_base_information_of_activities,
 )
 from src.tcx_to_gpx import convert_tcx_to_gpx
-from .Extension import Extension
-from .gpx_track_analyzer import TrackAnalyzer
+from src.Extension import Extension
+from src.elevation_track_analyzer import ElevationTrackAnalyzer
+from src.gpx_track_analyzer import TrackAnalyzer
 
 cycling_ids = [2, 5, 10, 19, 20, 21, 22, 25, 89, 143]
 
@@ -486,6 +487,45 @@ def update_power_data(
 
 def get_power_element_at(entries: list[dict[str, str]], index: int) -> str:
     return entries[index]["power"]
+
+
+def analyze_elevation_window(
+    gpx_path: str,
+    start_idx: int,
+    end_idx: int,
+    yaml_extensions_path: str | None = None,
+    additional_data_folder: str | None = None,
+) -> dict[str, float] | str:
+    """Analyze elevation gain, loss, average gradient and max gradient for a window of a GPX track.
+
+    Args:
+        gpx_path: Path to the GPX track file.
+        start_idx: Start index of the window (inclusive, 0-based).
+        end_idx: End index of the window (inclusive, 0-based).
+        yaml_extensions_path: Optional path to the YAML extensions file.
+        additional_data_folder: Optional folder for additional data files.
+
+    Returns:
+        Dictionary with elevation_gain, elevation_loss, avg_gradient, max_gradient,
+        window_length, or an error string if analysis fails.
+    """
+    try:
+        analyzer = TrackAnalyzer(
+            Path(gpx_path),
+            Path(additional_data_folder) if additional_data_folder else Path(gpx_path).parent,
+            yaml_file=Path(yaml_extensions_path) if yaml_extensions_path else None,
+        )
+        analyzer.set_all_points_with_distance()
+        points_with_time = [e for e in analyzer.all_points_with_extension if e[0].time]
+        points_with_time_and_elevation = [
+            e for e in points_with_time if e[0].elevation
+        ]
+        elevation_analyzer = ElevationTrackAnalyzer(points_with_time_and_elevation)
+        return elevation_analyzer.analyze_window(start_idx, end_idx)
+    except ValueError as err:
+        return f"Error: {err}"
+    except Exception as err:  # pylint: disable=broad-except
+        return f"return code: 1Unknown error occurred during elevation window analysis: {err}"
 
 
 def analyze_gpx_track(
