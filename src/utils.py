@@ -2,20 +2,58 @@ import datetime
 import math
 import re
 from pathlib import Path
-from typing import Tuple, List, Any
+from typing import Tuple, List, Any, Sequence
 
 import gpxpy
+import numpy as np
 import yaml
 from dateutil import parser
 from gpxpy.gpx import GPXTrackPoint, GPX
 
-from src.Extension import Extension
+from Extension import Extension
 
 SUFFIX = "_simplified"
 
+EARTH_RADIUS_M = 6371000.0
+
+
+def haversine_distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate the great-circle distance between two points in meters."""
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return EARTH_RADIUS_M * c
+
+
+def haversine_distances_cumsum_m(
+    latitudes: Sequence[float], longitudes: Sequence[float]
+) -> np.ndarray:
+    """Vectorized cumulative great-circle distances along a sequence of points, in meters."""
+    latitudes_array = np.asarray(latitudes, dtype=np.float64)
+    if latitudes_array.size < 2:
+        return np.zeros(latitudes_array.size)
+    lat = np.radians(latitudes_array)
+    lon = np.radians(np.asarray(longitudes, dtype=np.float64))
+    dphi = np.diff(lat)
+    dlambda = np.diff(lon)
+    a = (
+        np.sin(dphi / 2.0) ** 2
+        + np.cos(lat[:-1]) * np.cos(lat[1:]) * np.sin(dlambda / 2.0) ** 2
+    )
+    c = 2.0 * np.arctan2(np.sqrt(a), np.sqrt(1.0 - a))
+    segment_distances = EARTH_RADIUS_M * c
+    return np.concatenate(([0.0], np.cumsum(segment_distances)))
+
 
 def reduce_track_to_relevant_elevation_points(
-    points_with_extension: List[Tuple[GPXTrackPoint, Extension]],
+        points_with_extension: List[Tuple[GPXTrackPoint, Extension]],
 ) -> List[Tuple[int, Tuple[GPXTrackPoint, Extension]]]:
     reduced_points: List[Tuple[int, Tuple[GPXTrackPoint, Extension]]] = []
     points_with_doubles: List[Tuple[int, Tuple[GPXTrackPoint, Extension]]] = []
@@ -48,16 +86,16 @@ def reduce_track_to_relevant_elevation_points(
         next_elevation = (
             round(points_with_doubles[j + 1][1][0].elevation)  # type: ignore[arg-type]
             if j != len(points_with_doubles) - 1
-            and points_with_doubles[j + 1][1][0].elevation
+               and points_with_doubles[j + 1][1][0].elevation
             else current_elevation
         )
         if j == 0 or j == len(points_with_doubles) - 1:
             reduced_points.append(point_with_doubles)
         elif (
-            current_elevation != last_elevation and current_elevation != next_elevation
+                current_elevation != last_elevation and current_elevation != next_elevation
         ):
             if math.copysign(1, current_elevation - last_elevation) != math.copysign(
-                1, next_elevation - current_elevation
+                    1, next_elevation - current_elevation
             ):
                 reduced_points.append(point_with_doubles)
         j += 1
@@ -65,7 +103,7 @@ def reduce_track_to_relevant_elevation_points(
 
 
 def remove_elevation_differences_smaller_as(
-    points: List[Tuple[int, Tuple[GPXTrackPoint, Extension]]], minimal_delta: int
+        points: List[Tuple[int, Tuple[GPXTrackPoint, Extension]]], minimal_delta: int
 ) -> Tuple[List[Tuple[int, Tuple[GPXTrackPoint, Extension]]], float, float]:
     filtered_points: List[Tuple[int, Tuple[GPXTrackPoint, Extension]]] = []
     elevation_gain = 0.0
@@ -83,16 +121,16 @@ def remove_elevation_differences_smaller_as(
             delta_to_second_last = (
                 point[1][0].elevation - filtered_points[-2][1][0].elevation
                 if len(filtered_points) > 1
-                and point[1][0].elevation
-                and filtered_points[-2][1][0].elevation
+                   and point[1][0].elevation
+                   and filtered_points[-2][1][0].elevation
                 else 0
             )
             delta_from_last = (
                 filtered_points[-1][1][0].elevation
                 - filtered_points[-2][1][0].elevation
                 if len(filtered_points) > 1
-                and filtered_points[-1][1][0].elevation
-                and filtered_points[-2][1][0].elevation
+                   and filtered_points[-1][1][0].elevation
+                   and filtered_points[-2][1][0].elevation
                 else 0
             )
             if abs(delta) >= minimal_delta:
@@ -113,7 +151,7 @@ def remove_elevation_differences_smaller_as(
 
 
 def get_cleaned_track_elevation(
-    points: List[Tuple[GPXTrackPoint, Extension]],
+        points: List[Tuple[GPXTrackPoint, Extension]],
 ) -> List[float]:
     flattened_points: List[Tuple[GPXTrackPoint, Extension]] = []
     reduced_track_points_for_interval = reduce_track_to_relevant_elevation_points(
@@ -141,32 +179,32 @@ def get_cleaned_track_elevation(
 
 
 def fill_missing_points(
-    start_point: Tuple[int, Tuple[GPXTrackPoint, Extension]],
-    end_point: Tuple[int, Tuple[GPXTrackPoint, Extension]],
-    points: List[Tuple[GPXTrackPoint, Extension]],
+        start_point: Tuple[int, Tuple[GPXTrackPoint, Extension]],
+        end_point: Tuple[int, Tuple[GPXTrackPoint, Extension]],
+        points: List[Tuple[GPXTrackPoint, Extension]],
 ) -> List[Tuple[GPXTrackPoint, Extension]]:
     res = []
     points_in_between = points[start_point[0] + 1 : end_point[0] - 1]
     if len(points_in_between) > 0:
         res.append(points_in_between[0])
         is_increasing = (
-            start_point[1][0].elevation
-            and end_point[1][0].elevation
-            and start_point[1][0].elevation < end_point[1][0].elevation
+                start_point[1][0].elevation
+                and end_point[1][0].elevation
+                and start_point[1][0].elevation < end_point[1][0].elevation
         )
         for element in points_in_between:
             if is_increasing:
                 if (
-                    element[0].elevation
-                    and res[-1][0].elevation
-                    and element[0].elevation <= res[-1][0].elevation
+                        element[0].elevation
+                        and res[-1][0].elevation
+                        and element[0].elevation <= res[-1][0].elevation
                 ):
                     element[0].elevation = res[-1][0].elevation
             elif not is_increasing:
                 if (
-                    element[0].elevation
-                    and res[-1][0].elevation
-                    and element[0].elevation >= res[-1][0].elevation
+                        element[0].elevation
+                        and res[-1][0].elevation
+                        and element[0].elevation >= res[-1][0].elevation
                 ):
                     element[0].elevation = res[-1][0].elevation
             res.append(element)
@@ -239,23 +277,12 @@ def remove_extensions(point: GPXTrackPoint, last_point: GPXTrackPoint) -> GPXTra
     return point
 
 
-def get_base_information_of_activities(
-    activities: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    return [
-        {
-            "date": entry["startTimeLocal"][0:10]
-            if "startTimeLocal" in entry and len(entry["startTimeLocal"]) > 10
-            else "-",
-            "activityId": entry["activityId"] if "activityId" in entry else "-",
-            "sportType": entry["activityType"]["typeId"]
-            if "activityType" in entry and "typeId" in entry["activityType"]
-            else 0,
-            "duration": round(entry["duration"]) if "duration" in entry else 0,
-            "distance": round(entry["distance"]) if "distance" in entry else 0,
-            "elevationGain": round(entry["elevationGain"])
-            if "elevationGain" in entry
-            else 0,
-        }
-        for entry in activities
-    ]
+def get_base_information_of_activities(activities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{
+        "date": entry["startTimeLocal"][0:10] if "startTimeLocal" in entry and len(entry["startTimeLocal"]) > 10 else "-",
+        "activityId": entry["activityId"] if "activityId" in entry else "-",
+        "sportType": entry["activityType"]["typeId"] if "activityType" in entry and "typeId" in entry["activityType"] else 0,
+        "duration": round(entry["duration"]) if "duration" in entry else 0,
+        "distance": round(entry["distance"]) if "distance" in entry else 0,
+        "elevationGain": round(entry["elevationGain"]) if "elevationGain" in entry else 0,
+    } for entry in activities]

@@ -26,6 +26,8 @@ import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 
+from utils import haversine_distance_m
+
 # Constants for tile generation
 TILE_SIZE = 256
 MAX_ZOOM = 18
@@ -93,13 +95,13 @@ def is_valid_coordinate(lat: float, lon: float) -> bool:
 def _parse_gpx_points_iterative(element: ET.Element) -> Iterator[tuple[float, float]]:
     """
     Iteratively parse points from a GPX element (trkpt, rtept, or wpt).
-    
+
     Uses direct attribute access for speed, avoiding gpxpy object overhead.
     Yields (lat, lon) tuples for valid coordinates.
     """
     lat_attr = element.get('lat')
     lon_attr = element.get('lon')
-    
+
     if lat_attr is not None and lon_attr is not None:
         try:
             lat = float(lat_attr)
@@ -116,34 +118,34 @@ def _parse_gpx_points_iterative(element: ET.Element) -> Iterator[tuple[float, fl
 def load_single_gpx_file_fast(gpx_file: Path) -> list[list[tuple[float, float]]]:
     """
     Load tracks from a single GPX file using fast streaming XML parsing.
-    
+
     This is significantly faster than gpxpy.parse() because:
     1. Uses ElementTree's iterative parsing (lower memory, faster)
     2. Avoids creating complex gpxpy objects
     3. Uses direct string-to-float conversion
     4. Inlines coordinate validation
-    
+
     Returns a list of tracks, where each track is a list of (lat, lon) tuples.
     """
     tracks: list[list[tuple[float, float]]] = []
-    
+
     try:
         # Use iterparse for streaming - only load elements we need
         # This avoids building the full tree in memory
         context = ET.iterparse(str(gpx_file), events=('start', 'end'))
-        
+
         current_track_points: list[tuple[float, float]] = []
         current_segment_points: list[tuple[float, float]] = []
         in_track = False
         in_segment = False
         in_route = False
-        
+
         for event, elem in context:
             tag = elem.tag
             # Handle namespaced tags (e.g., {http://www.topografix.com/GPX/1/1}trkpt)
             if '}' in tag:
                 tag = tag.split('}')[1]
-            
+
             if event == 'start':
                 if tag == 'trk':
                     in_track = True
@@ -160,7 +162,7 @@ def load_single_gpx_file_fast(gpx_file: Path) -> list[list[tuple[float, float]]]
                 elif tag == 'rtept' and in_route:
                     for point in _parse_gpx_points_iterative(elem):
                         current_segment_points.append(point)
-            
+
             elif event == 'end':
                 if tag == 'trkseg' and in_segment:
                     in_segment = False
@@ -178,17 +180,17 @@ def load_single_gpx_file_fast(gpx_file: Path) -> list[list[tuple[float, float]]]
                     current_segment_points = []
                 # Clear element to save memory during parsing
                 elem.clear()
-        
+
     except Exception as e:
         print(f"Warning: Failed to load {gpx_file}: {e}", file=sys.stderr)
-    
+
     return tracks
 
 
 def load_single_gpx_file(gpx_file: Path) -> list[list[tuple[float, float]]]:
     """
     Load tracks from a single GPX file.
-    
+
     Uses the fast streaming parser by default.
     """
     return load_single_gpx_file_fast(gpx_file)
@@ -197,19 +199,19 @@ def load_single_gpx_file(gpx_file: Path) -> list[list[tuple[float, float]]]:
 def load_gpx_tracks_sequential(gpx_files: list[Path]) -> list[list[tuple[float, float]]]:
     """
     Load tracks from GPX files sequentially (optimized for single-worker).
-    
+
     This is faster than multiprocessing when num_workers=1 because:
     1. No process spawn overhead
     2. No inter-process communication
     3. No pickle serialization of track data
-    
+
     Returns a list of tracks, where each track is a list of (lat, lon) tuples.
     """
     all_tracks: list[list[tuple[float, float]]] = []
     total_files = len(gpx_files)
-    
+
     print(f"Loading {total_files} GPX files sequentially...")
-    
+
     for i, gpx_file in enumerate(gpx_files, 1):
         try:
             tracks = load_single_gpx_file_fast(gpx_file)
@@ -218,7 +220,7 @@ def load_gpx_tracks_sequential(gpx_files: list[Path]) -> list[list[tuple[float, 
                 print(f"  Loaded {gpx_file.name} ({i}/{total_files}) - {len(tracks)} tracks")
         except Exception as e:
             print(f"Warning: Failed to process {gpx_file}: {e}", file=sys.stderr)
-    
+
     return all_tracks
 
 
@@ -227,7 +229,7 @@ def load_gpx_tracks(
 ) -> list[list[tuple[float, float]]]:
     """
     Load tracks from GPX files.
-    
+
     Automatically chooses sequential loading for single worker (faster due to
     no multiprocessing overhead) or parallel loading for multiple workers.
 
@@ -236,7 +238,7 @@ def load_gpx_tracks(
     # Use sequential loading for single worker - much faster due to no IPC overhead
     if num_workers <= 1:
         return load_gpx_tracks_sequential(gpx_files)
-    
+
     all_tracks: list[list[tuple[float, float]]] = []
     total_files = len(gpx_files)
 
@@ -321,18 +323,7 @@ def get_tiles_for_segment(
 
 def _haversine_distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate the great-circle distance between two points in meters."""
-    R = 6371000.0  # Earth radius in meters
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-
-    a = (
-        math.sin(dphi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    )
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return R * c
+    return haversine_distance_m(lat1, lon1, lat2, lon2)
 
 
 def compute_tile_coverage(
@@ -470,46 +461,84 @@ def draw_line_on_grid(
             y0 += sy
 
 
-def frequency_to_color(
-    frequency: float, max_frequency: float
-) -> tuple[int, int, int, int]:
+def _resample_track_uniform(
+    track: list[tuple[float, float]],
+    step_m: float,
+    max_segment_distance_m: float,
+) -> list[list[tuple[float, float]]]:
     """
-    Convert frequency value to RGBA color.
+    Resample a single track to (approximately) uniform point spacing.
 
-    Uses a heat color scheme: transparent -> blue -> green -> yellow -> red.
+    Returns a list of sub-tracks: the track is split wherever consecutive
+    points are further apart than ``max_segment_distance_m`` (GPS gaps), so
+    no bridging lines are introduced.  Within each sub-track, points are
+    interpolated every ``step_m`` meters, so drawing a traversal adds a
+    uniform weight per pixel regardless of the original GPS recording
+    interval or travel speed.
     """
-    if frequency <= 0 or max_frequency <= 0:
-        return 0, 0, 0, 0  # Transparent
+    sub_tracks: list[list[tuple[float, float]]] = []
+    current: list[tuple[float, float]] = [track[0]]
+    carry = 0.0
 
-    # Normalize frequency
-    norm = min(1.0, frequency / max_frequency)
+    for i in range(len(track) - 1):
+        lat1, lon1 = track[i]
+        lat2, lon2 = track[i + 1]
+        seg_dist = _haversine_distance_m(lat1, lon1, lat2, lon2)
 
-    # Apply logarithmic scaling for better visualization
-    norm = math.log(1 + norm * 9) / math.log(10)
+        # GPS gap: do not interpolate across it, start a new sub-track
+        if max_segment_distance_m > 0 and seg_dist > max_segment_distance_m:
+            if len(current) >= 2:
+                sub_tracks.append(current)
+            current = [(lat2, lon2)]
+            carry = 0.0
+            continue
 
-    # Heat color gradient
-    if norm < 0.25:
-        # Transparent to blue
-        t = norm / 0.25
-        r, g, b = 0, 0, int(255 * t)
-        a = int(255 * t * 0.5)
-    elif norm < 0.5:
-        # Blue to green
-        t = (norm - 0.25) / 0.25
-        r, g, b = 0, int(255 * t), int(255 * (1 - t))
-        a = int(128 + 64 * t)
-    elif norm < 0.75:
-        # Green to yellow
-        t = (norm - 0.5) / 0.25
-        r, g, b = int(255 * t), 255, 0
-        a = int(192 + 32 * t)
-    else:
-        # Yellow to red
-        t = (norm - 0.75) / 0.25
-        r, g, b = 255, int(255 * (1 - t)), 0
-        a = int(224 + 31 * t)
+        if seg_dist <= 0.0:
+            continue
 
-    return (r, g, b, a)
+        remaining = seg_dist
+        while carry + remaining >= step_m:
+            t = (step_m - carry) / remaining
+            lat1 = lat1 + (lat2 - lat1) * t
+            lon1 = lon1 + (lon2 - lon1) * t
+            current.append((lat1, lon1))
+            remaining -= step_m - carry
+            carry = 0.0
+        carry += remaining
+
+    # Close the track at its original end point so the final < step_m
+    # stretch is not cut off.
+    if current[-1] != track[-1]:
+        current.append(track[-1])
+    if len(current) >= 2:
+        sub_tracks.append(current)
+
+    return sub_tracks
+
+
+def resample_tracks_uniform(
+    tracks: list[list[tuple[float, float]]],
+    step_m: float = 10.0,
+    max_segment_distance_m: float = MAX_SEGMENT_DISTANCE_M,
+) -> list[list[tuple[float, float]]]:
+    """
+    Resample all tracks to (approximately) uniform point spacing of ``step_m``.
+
+    After resampling, a pixel's frequency approximately reflects the number
+    of times a path was traveled, instead of the density of recorded GPS
+    points.  Set ``step_m`` to 0 to disable resampling.
+    """
+    if step_m <= 0:
+        return tracks
+
+    resampled: list[list[tuple[float, float]]] = []
+    for track in tracks:
+        if len(track) < 2:
+            continue
+        resampled.extend(
+            _resample_track_uniform(track, step_m, max_segment_distance_m)
+        )
+    return resampled
 
 
 def _build_tile_grid(
@@ -559,17 +588,17 @@ def _compute_tile_max_with_blur(
 ) -> float:
     """
     Compute the maximum frequency for a single tile after Gaussian blur.
-    
+
     This builds a minimal grid and applies blur to get the correct max value
     that matches what will be used in tile generation.
-    
+
     Optimizations over full _build_tile_grid:
     1. Uses float32 consistently (no type conversions)
     2. Inlines the line drawing to avoid function call overhead
     3. Returns immediately after finding max (no PNG conversion)
     """
     grid = np.zeros((tile_size, tile_size), dtype=np.float32)
-    
+
     for lat1, lon1, lat2, lon2 in segments:
         x1, y1 = lat_lon_to_tile_coords(lat1, lon1, zoom)
         x2, y2 = lat_lon_to_tile_coords(lat2, lon2, zoom)
@@ -605,65 +634,87 @@ def _compute_tile_max_with_blur(
             if e2 < dx:
                 err += dx
                 y0 += sy
-    
+
     if gaussian_sigma > 0:
         grid = gaussian_filter(grid, sigma=gaussian_sigma)
-    
+
     return float(np.max(grid))
 
 
-def compute_global_max_frequency(
+def _effective_sigma(base_sigma: float, zoom: int) -> float:
+    """
+    Scale the Gaussian blur sigma with the zoom level.
+
+    Low zoom levels need a wide spread so that sparse tracks merge into
+    visible corridors; high zoom levels look best with thin, crisp lines.
+    The full ``base_sigma`` is applied at zoom <= 10 and the minimum spread
+    at zoom >= 15, with linear interpolation in between.
+    """
+    if base_sigma <= 0:
+        return 0.0
+    if zoom <= 10:
+        return base_sigma
+    min_sigma = max(0.5, base_sigma / 4.0)
+    if zoom >= 15:
+        return min_sigma
+    t = (zoom - 10) / 5.0
+    return base_sigma + t * (min_sigma - base_sigma)
+
+
+def compute_global_reference_frequency(
     tile_coverage: dict[tuple[int, int], list[tuple[float, float, float, float]]],
     zoom: int,
     tile_size: int = 256,
     gaussian_sigma: float = 1.0,
     num_workers: int = 1,
+    normalization_percentile: float = 99.5,
 ) -> float:
     """
-    Compute the global maximum frequency value across all tiles at a zoom level.
+    Compute the global reference frequency used to normalise tiles at a zoom level.
 
-    This pre-pass is required so that every tile at the same zoom level uses
-    an identical normalisation scale, preventing colour discontinuities at
-    tile boundaries.
-    
-    Optimized version that:
-    1. Uses inlined Bresenham algorithm (avoids function call overhead)
-    2. Supports parallel processing for multiple tiles
-    3. Still applies Gaussian blur to get correct max values
+    Instead of the absolute maximum (where a single outlier tile - a race
+    loop, a trailhead - would darken the whole map), the reference is the
+    ``normalization_percentile`` of the per-tile maxima, floored at 1.0.
+
+    Every tile at the same zoom level is normalised against this single
+    reference value, preventing colour discontinuities at tile boundaries.
     """
     if not tile_coverage:
         return 0.0
-    
+
+    tile_maxima: list[float] = []
+
     # For small tile counts or single worker, process sequentially
     # (avoids multiprocessing overhead)
     if num_workers <= 1 or len(tile_coverage) < 4:
-        global_max = 0.0
         for (tx, ty), segments in tile_coverage.items():
-            local_max = _compute_tile_max_with_blur(tx, ty, zoom, segments, tile_size, gaussian_sigma)
-            if local_max > global_max:
-                global_max = local_max
-        return global_max
-    
-    # Parallel processing for large tile sets
-    from concurrent.futures import ProcessPoolExecutor, as_completed
-    
-    global_max = 0.0
-    with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        futures = {
-            executor.submit(_compute_tile_max_with_blur, tx, ty, zoom, segments, tile_size, gaussian_sigma): (tx, ty)
-            for (tx, ty), segments in tile_coverage.items()
-        }
-        
-        for future in as_completed(futures):
-            try:
-                local_max = future.result()
-                if local_max > global_max:
-                    global_max = local_max
-            except Exception as e:
-                tx, ty = futures[future]
-                print(f"  Warning: Failed to compute max for tile ({tx}, {ty}): {e}", file=sys.stderr)
-    
-    return global_max
+            tile_maxima.append(
+                _compute_tile_max_with_blur(tx, ty, zoom, segments, tile_size, gaussian_sigma)
+            )
+    else:
+        # Parallel processing for large tile sets
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            futures = {
+                executor.submit(_compute_tile_max_with_blur, tx, ty, zoom, segments, tile_size, gaussian_sigma): (tx, ty)
+                for (tx, ty), segments in tile_coverage.items()
+            }
+
+            for future in as_completed(futures):
+                try:
+                    tile_maxima.append(future.result())
+                except Exception as e:
+                    tx, ty = futures[future]
+                    print(f"  Warning: Failed to compute max for tile ({tx}, {ty}): {e}", file=sys.stderr)
+
+    if not tile_maxima:
+        return 0.0
+
+    reference = float(
+        np.percentile(np.asarray(tile_maxima, dtype=np.float64), normalization_percentile)
+    )
+    return max(reference, 1.0)
 
 
 def generate_single_tile(
@@ -682,12 +733,15 @@ def generate_single_tile(
     colour-mapping so that slightly offset GPS tracks blend together
     instead of appearing as separate lines.
 
-    ``global_max_freq`` should be the maximum frequency value observed across
-    **all** tiles at this zoom level (obtained from
-    :func:`compute_global_max_frequency`).  When provided (> 0) every tile is
-    normalised against the same scale, which eliminates colour discontinuities
-    at tile boundaries.  When omitted (or 0) the tile falls back to its own
-    local maximum — useful for single-tile previews.
+    ``global_max_freq`` should be the reference frequency for this zoom level
+    (obtained from :func:`compute_global_reference_frequency`).  When provided
+    (> 0) every tile is normalised against the same scale, which eliminates
+    colour discontinuities at tile boundaries.  When omitted (or 0) the tile
+    falls back to its own local maximum — useful for single-tile previews.
+
+    Colors use a Strava-style gradient (deep blue -> teal -> green -> yellow
+    -> red).  Any non-zero pixel is drawn with a visible alpha floor, so
+    paths traveled only once or twice remain visible.
 
     Returns (tile_x, tile_y, png_bytes).
     """
@@ -710,33 +764,47 @@ def generate_single_tile(
         # Create RGBA array
         rgba = np.zeros((tile_size, tile_size, 4), dtype=np.uint8)
 
-        # Apply heat color gradient (vectorized)
-        # Transparent to blue (0-0.25)
-        mask1 = (normalized > 0) & (normalized < 0.25)
-        t1 = normalized[mask1] / 0.25
-        rgba[mask1, 2] = (t1 * 255).astype(np.uint8)  # Blue
-        rgba[mask1, 3] = (t1 * 127.5).astype(np.uint8)  # Alpha
+        # Strava-style heat gradient: any non-zero value is immediately
+        # visible (deep blue with an alpha floor) and ramps through teal,
+        # green and yellow to red at the top end.  Only exactly zero is
+        # transparent, so even paths traveled once or twice are visible.
+        # Deep blue (0 < n < 0.2)
+        mask1 = (normalized > 0) & (normalized < 0.2)
+        t1 = normalized[mask1] / 0.2
+        rgba[mask1, 0] = (30 + t1 * 40).astype(np.uint8)   # 30 -> 70
+        rgba[mask1, 1] = (30 + t1 * 60).astype(np.uint8)   # 30 -> 90
+        rgba[mask1, 2] = (160 + t1 * 60).astype(np.uint8)  # 160 -> 220
+        rgba[mask1, 3] = (150 + t1 * 50).astype(np.uint8)  # alpha 150 -> 200
 
-        # Blue to green (0.25-0.5)
-        mask2 = (normalized >= 0.25) & (normalized < 0.5)
-        t2 = (normalized[mask2] - 0.25) / 0.25
-        rgba[mask2, 1] = (t2 * 255).astype(np.uint8)  # Green
-        rgba[mask2, 2] = ((1 - t2) * 255).astype(np.uint8)  # Blue out
-        rgba[mask2, 3] = (128 + t2 * 64).astype(np.uint8)  # Alpha
+        # Blue to teal (0.2 <= n < 0.4)
+        mask2 = (normalized >= 0.2) & (normalized < 0.4)
+        t2 = (normalized[mask2] - 0.2) / 0.2
+        rgba[mask2, 0] = ((1 - t2) * 70).astype(np.uint8)   # 70 -> 0
+        rgba[mask2, 1] = (90 + t2 * 110).astype(np.uint8)   # 90 -> 200
+        rgba[mask2, 2] = (220 - t2 * 30).astype(np.uint8)  # 220 -> 190
+        rgba[mask2, 3] = (200 + t2 * 30).astype(np.uint8)  # alpha 200 -> 230
 
-        # Green to yellow (0.5-0.75)
-        mask3 = (normalized >= 0.5) & (normalized < 0.75)
-        t3 = (normalized[mask3] - 0.5) / 0.25
-        rgba[mask3, 0] = (t3 * 255).astype(np.uint8)  # Red
-        rgba[mask3, 1] = 255  # Green
-        rgba[mask3, 3] = (192 + t3 * 32).astype(np.uint8)  # Alpha
+        # Teal to green (0.4 <= n < 0.6)
+        mask3 = (normalized >= 0.4) & (normalized < 0.6)
+        t3 = (normalized[mask3] - 0.4) / 0.2
+        rgba[mask3, 0] = (t3 * 60).astype(np.uint8)         # 0 -> 60
+        rgba[mask3, 1] = (200 + t3 * 20).astype(np.uint8)   # 200 -> 220
+        rgba[mask3, 2] = ((1 - t3) * 190).astype(np.uint8)  # 190 -> 0
+        rgba[mask3, 3] = (230 + t3 * 15).astype(np.uint8)   # alpha 230 -> 245
 
-        # Yellow to red (0.75-1.0)
-        mask4 = normalized >= 0.75
-        t4 = (normalized[mask4] - 0.75) / 0.25
-        rgba[mask4, 0] = 255  # Red
-        rgba[mask4, 1] = ((1 - t4) * 255).astype(np.uint8)  # Green out
-        rgba[mask4, 3] = (224 + t4 * 31).astype(np.uint8)  # Alpha
+        # Green to yellow (0.6 <= n < 0.8)
+        mask4 = (normalized >= 0.6) & (normalized < 0.8)
+        t4 = (normalized[mask4] - 0.6) / 0.2
+        rgba[mask4, 0] = (60 + t4 * 195).astype(np.uint8)  # 60 -> 255
+        rgba[mask4, 1] = (220 + t4 * 10).astype(np.uint8)  # 220 -> 230
+        rgba[mask4, 3] = (245 + t4 * 10).astype(np.uint8)  # alpha 245 -> 255
+
+        # Yellow to red (0.8 <= n <= 1.0)
+        mask5 = normalized >= 0.8
+        t5 = (normalized[mask5] - 0.8) / 0.2
+        rgba[mask5, 0] = 255
+        rgba[mask5, 1] = (230 - t5 * 190).astype(np.uint8)  # 230 -> 40
+        rgba[mask5, 3] = 255
 
         img = Image.fromarray(rgba, mode="RGBA")
 
@@ -813,7 +881,6 @@ def create_mbtiles(
     conn.commit()
     conn.close()
 
-
 def generate_heatmap(
     gpx_files: list[Path],
     output_path: Path,
@@ -824,6 +891,9 @@ def generate_heatmap(
     num_workers: int = 1,
     gaussian_sigma: float = 2.0,
     max_segment_distance_m: float = MAX_SEGMENT_DISTANCE_M,
+    resample_step_m: float = 10.0,
+    normalization_percentile: float = 99.5,
+    progress_callback=None,
 ) -> None:
     """
     Generate a heatmap MBTiles file from GPX tracks.
@@ -836,12 +906,27 @@ def generate_heatmap(
         name: Name for the tile layer
         description: Description for the tile layer
         num_workers: Number of parallel workers for tile generation
-        gaussian_sigma: Standard deviation for Gaussian blur applied to each
-            tile's frequency grid.  Larger values spread the heat further and
-            merge offset tracks more aggressively.  Set to 0 to disable.
+        gaussian_sigma: Standard deviation for the Gaussian blur applied to
+            each tile's frequency grid at low zoom levels (see
+            :func:`_effective_sigma` for the zoom-dependent scaling).  Larger
+            values spread the heat further and merge offset tracks more
+            aggressively.  Set to 0 to disable.
         max_segment_distance_m: Maximum distance (meters) between consecutive
             track points.  Segments longer than this are skipped to avoid
-            drawing spurious lines from GPS signal gaps.  Set to 0 to disable.
+            drawing spurious lines caused by GPS signal gaps.  Set to 0 to
+            disable.
+        resample_step_m: Distance in meters for uniform track resampling.
+            Tracks are interpolated to this spacing before drawing so that
+            pixel counts reflect how often a path was traveled, independent
+            of the GPS recording interval or travel speed.  GPS gaps are
+            preserved.  Set to 0 to disable resampling.
+        normalization_percentile: Percentile (0-100) of the per-tile frequency
+            maxima used as the color-normalization reference for a zoom
+            level, instead of the absolute maximum.  Keeps a few outlier
+            tiles from darkening the whole map.
+        progress_callback: Optional callable invoked as
+            progress_callback(current_zoom_index, total_zoom_levels) at the
+            start of each zoom level.
     """
     start_time = time.time()
     tracks = load_gpx_tracks(gpx_files, num_workers)
@@ -865,12 +950,35 @@ def generate_heatmap(
         f"lon [{bounds.min_lon:.4f}, {bounds.max_lon:.4f}]"
     )
 
+    # Resample tracks to uniform spacing so that pixel counts reflect the
+    # number of traversals instead of the GPS point density.  GPS gaps are
+    # handled here (tracks are split), so the coverage pass can skip its
+    # per-segment gap check afterwards.
+    if resample_step_m > 0:
+        print(f"Resampling tracks to uniform {resample_step_m} m spacing...")
+        resample_start = time.time()
+        tracks = resample_tracks_uniform(tracks, resample_step_m, max_segment_distance_m)
+        print(
+            f"  Resampled to {len(tracks)} sub-tracks "
+            f"in {time.time() - resample_start:.2f} seconds"
+        )
+        coverage_max_segment_distance_m = 0.0
+    else:
+        coverage_max_segment_distance_m = max_segment_distance_m
+
     # Generate tiles for each zoom level
     all_tiles: dict[tuple[int, int, int], bytes] = {}
 
     for zoom in range(min_zoom, max_zoom + 1):
+        if progress_callback:
+            try:
+                progress_callback(zoom - min_zoom + 1, max_zoom - min_zoom + 1)
+            except Exception:
+                pass
         print(f"Computing tile coverage for zoom level {zoom}...")
-        tile_coverage = compute_tile_coverage(tracks, zoom, max_segment_distance_m)
+        tile_coverage = compute_tile_coverage(
+            tracks, zoom, coverage_max_segment_distance_m
+        )
 
         if not tile_coverage:
             print(f"  No tiles to generate for zoom level {zoom}")
@@ -878,18 +986,24 @@ def generate_heatmap(
 
         print(f"  Generating {len(tile_coverage)} tiles...")
 
-        # Pre-pass: compute the global maximum frequency across all tiles so
-        # that every tile at this zoom level uses the same colour scale.
-        # Without this, tiles with fewer track pixels appear brighter than
-        # neighbouring tiles, causing visible colour seams at tile edges.
-        print(f"  Computing global frequency maximum for zoom {zoom}...")
-        global_max_start = time.time()
-        global_max = compute_global_max_frequency(
-            tile_coverage, zoom, TILE_SIZE, gaussian_sigma, num_workers
+        # Zoom-dependent blur: wide spread at low zoom merges sparse tracks
+        # into visible corridors, thin spread keeps high zoom crisp.
+        sigma = _effective_sigma(gaussian_sigma, zoom)
+        print(f"  Effective blur sigma: {sigma:.2f}")
+
+        # Pre-pass: compute the global reference frequency across all tiles
+        # so that every tile at this zoom level uses the same colour scale.
+        # A high percentile of the per-tile maxima is used instead of the
+        # absolute maximum so that a few outlier tiles do not darken the
+        # whole map.
+        print(f"  Computing global reference frequency for zoom {zoom}...")
+        reference_start = time.time()
+        reference_frequency = compute_global_reference_frequency(
+            tile_coverage, zoom, TILE_SIZE, sigma, num_workers, normalization_percentile
         )
-        global_max_time = time.time() - global_max_start
-        print(f"  Computing global frequency maximum for zoom {zoom} took {global_max_time:.2f} seconds")
-        print(f"  Global max frequency: {global_max:.2f}")
+        reference_time = time.time() - reference_start
+        print(f"  Computing global reference frequency for zoom {zoom} took {reference_time:.2f} seconds")
+        print(f"  Reference frequency: {reference_frequency:.2f}")
 
         # Generate tiles - sequential for single worker, parallel for multiple
         tile_count = 0
@@ -899,7 +1013,7 @@ def generate_heatmap(
             for (tx, ty), segments in tile_coverage.items():
                 try:
                     _, _, png_data = generate_single_tile(
-                        tx, ty, zoom, segments, TILE_SIZE, gaussian_sigma, global_max
+                        tx, ty, zoom, segments, TILE_SIZE, sigma, reference_frequency
                     )
                     if png_data and len(png_data) > 32:  # Skip nearly empty tiles
                         all_tiles[(zoom, tx, ty)] = png_data
@@ -919,8 +1033,8 @@ def generate_heatmap(
                             zoom,
                             segments,
                             TILE_SIZE,
-                            gaussian_sigma,
-                            global_max,
+                            sigma,
+                            reference_frequency,
                         )
                     )
 
@@ -979,7 +1093,7 @@ def main() -> None:
         help="Output MBTiles file (default: heatmap.mbtiles)",
     )
     parser.add_argument(
-        "--min-zoom", type=int, default=8, help="Minimum zoom level (default: 8)"
+        "--min-zoom", type=int, default=6, help="Minimum zoom level (default: 6)"
     )
     parser.add_argument(
         "--max-zoom", type=int, default=16, help="Maximum zoom level (default: 16)"
@@ -1003,11 +1117,23 @@ def main() -> None:
     parser.add_argument(
         "--sigma",
         type=float,
-        default=1.0,
+        default=2.0,
         help=(
             "Standard deviation for Gaussian blur applied to each tile's "
-            "frequency grid.  Larger values merge offset tracks more "
-            "aggressively; use 0 to disable (default: 1.0)"
+            "frequency grid at low zoom levels (scaled down at higher "
+            "zooms).  Larger values merge offset tracks more "
+            "aggressively; use 0 to disable (default: 2.0)"
+        ),
+    )
+    parser.add_argument(
+        "--resample-step",
+        type=float,
+        default=10.0,
+        help=(
+            "Distance in meters for uniform track resampling, so pixel "
+            "counts reflect how often a path was traveled regardless of "
+            "GPS recording interval or speed.  Use 0 to disable "
+            "(default: 10.0)"
         ),
     )
     parser.add_argument(
@@ -1052,6 +1178,7 @@ def main() -> None:
         num_workers=args.workers,
         gaussian_sigma=args.sigma,
         max_segment_distance_m=args.max_segment_distance,
+        resample_step_m=args.resample_step,
     )
 
 
