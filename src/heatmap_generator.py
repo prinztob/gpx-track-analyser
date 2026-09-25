@@ -645,20 +645,24 @@ def _effective_sigma(base_sigma: float, zoom: int) -> float:
     """
     Scale the Gaussian blur sigma with the zoom level.
 
-    Low zoom levels need a wide spread so that sparse tracks merge into
-    visible corridors; high zoom levels look best with thin, crisp lines.
-    The full ``base_sigma`` is applied at zoom <= 10 and the minimum spread
-    at zoom >= 15, with linear interpolation in between.
+    High zoom levels need the full spread so that slightly offset GPS
+    recordings of the same path blend into a single band.  At low zoom
+    levels those offsets already collapse into the same pixel, so only a
+    minimal blur is applied there - a wide blur would turn every track
+    into a broad band that hides the basemap (especially because the
+    color ramp draws any non-zero pixel with a visible alpha floor).
+    The minimum spread is applied at zoom <= 10 and the full
+    ``base_sigma`` at zoom >= 15, with linear interpolation in between.
     """
     if base_sigma <= 0:
         return 0.0
-    if zoom <= 10:
-        return base_sigma
     min_sigma = max(0.5, base_sigma / 4.0)
-    if zoom >= 15:
+    if zoom <= 10:
         return min_sigma
+    if zoom >= 15:
+        return base_sigma
     t = (zoom - 10) / 5.0
-    return base_sigma + t * (min_sigma - base_sigma)
+    return min_sigma + t * (base_sigma - min_sigma)
 
 
 def compute_global_reference_frequency(
@@ -907,7 +911,7 @@ def generate_heatmap(
         description: Description for the tile layer
         num_workers: Number of parallel workers for tile generation
         gaussian_sigma: Standard deviation for the Gaussian blur applied to
-            each tile's frequency grid at low zoom levels (see
+            each tile's frequency grid at high zoom levels (see
             :func:`_effective_sigma` for the zoom-dependent scaling).  Larger
             values spread the heat further and merge offset tracks more
             aggressively.  Set to 0 to disable.
@@ -986,8 +990,9 @@ def generate_heatmap(
 
         print(f"  Generating {len(tile_coverage)} tiles...")
 
-        # Zoom-dependent blur: wide spread at low zoom merges sparse tracks
-        # into visible corridors, thin spread keeps high zoom crisp.
+        # Zoom-dependent blur: full spread at high zoom merges slightly
+        # offset GPS tracks into a single band; minimal spread at low zoom
+        # keeps lines thin so the basemap stays visible.
         sigma = _effective_sigma(gaussian_sigma, zoom)
         print(f"  Effective blur sigma: {sigma:.2f}")
 
@@ -1120,7 +1125,7 @@ def main() -> None:
         default=2.0,
         help=(
             "Standard deviation for Gaussian blur applied to each tile's "
-            "frequency grid at low zoom levels (scaled down at higher "
+            "frequency grid at high zoom levels (scaled down at lower "
             "zooms).  Larger values merge offset tracks more "
             "aggressively; use 0 to disable (default: 2.0)"
         ),
